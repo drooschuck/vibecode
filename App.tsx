@@ -28,48 +28,60 @@ import { askAiTutor } from './services/geminiService';
 // --- Helper Components ---
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; colorClass: string }> = ({ title, value, icon, colorClass }) => (
-  <div className={`p-6 rounded-2xl text-white shadow-lg relative overflow-hidden ${colorClass} transition-transform hover:scale-105`}>
-    <div className="flex justify-between items-start mb-4">
-      <div>
+  <div className={`p-6 rounded-2xl text-white shadow-md relative overflow-hidden ${colorClass} transition-transform hover:scale-[1.02]`}>
+    <div className="flex justify-between items-start h-full">
+      <div className="flex flex-col justify-between h-full">
         <p className="text-sm font-medium opacity-90 mb-1">{title}</p>
-        <h3 className="text-3xl font-bold">{value}</h3>
+        <h3 className="text-4xl font-extrabold tracking-tight">{value}</h3>
       </div>
-      <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+      <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
         {icon}
       </div>
     </div>
   </div>
 );
 
-const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void }> = ({ course, onSelect }) => (
-  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-full group">
-    <div className="flex justify-between items-start mb-4">
-      <div className={`w-14 h-14 rounded-2xl ${course.color} bg-opacity-10 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform`}>
-        {course.icon}
-      </div>
-      <div className={`px-3 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-600`}>
-        {course.lessons.length} Lessons
-      </div>
+const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void; progress: number }> = ({ course, onSelect, progress }) => (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-full group overflow-hidden">
+    <div className={`h-32 ${course.color} flex items-center justify-center relative`}>
+        <div className="text-5xl transform group-hover:scale-110 transition-transform duration-300">
+            {course.icon}
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-4 bg-white/10 backdrop-blur-[2px]"></div>
     </div>
     
-    <h3 className={`text-xl font-bold mb-1 text-slate-900 group-hover:text-blue-600 transition-colors`}>
-      {course.title}
-    </h3>
-    <p className="text-sm text-gray-500 font-medium mb-4">{course.level}</p>
-    <p className="text-gray-600 text-sm mb-6 flex-grow leading-relaxed">
-      {course.description}
-    </p>
-    
-    <div className="w-full bg-gray-100 rounded-full h-1.5 mb-6">
-      <div className={`h-1.5 rounded-full ${course.color.replace('bg-', 'bg-')}`} style={{ width: '0%' }}></div>
-    </div>
+    <div className="p-6 flex-1 flex flex-col">
+        <div className="mb-4">
+            <h3 className={`text-xl font-bold mb-1 text-slate-900 group-hover:text-blue-600 transition-colors`}>
+                {course.title}
+            </h3>
+            <p className="text-sm text-gray-500 font-medium">{course.level}</p>
+        </div>
+        
+        <p className="text-gray-600 text-sm mb-6 flex-grow leading-relaxed">
+            {course.description}
+        </p>
+        
+        <div className="mt-auto">
+            <div className="flex justify-between text-xs text-gray-500 mb-2 font-medium">
+                <span>Progress</span>
+                <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2 mb-6">
+                <div 
+                    className={`h-2 rounded-full ${course.color}`} 
+                    style={{ width: `${progress}%` }}
+                ></div>
+            </div>
 
-    <button 
-      onClick={() => onSelect(course)}
-      className={`w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${course.color} hover:shadow-lg hover:brightness-105`}
-    >
-      Start Learning <ChevronRight size={18} />
-    </button>
+            <button 
+                onClick={() => onSelect(course)}
+                className={`w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${course.color} hover:brightness-105 shadow-md hover:shadow-lg`}
+            >
+                {progress > 0 ? 'Continue' : 'Start Learning'} <ChevronRight size={18} />
+            </button>
+        </div>
+    </div>
   </div>
 );
 
@@ -134,15 +146,21 @@ export default function App() {
 
   const handleStartCourse = (course: Course) => {
     setActiveCourse(course);
-    setActiveLessonIndex(0);
-    setCode(course.lessons[0].initialCode);
+    // Find the first unfinished lesson or default to 0
+    const firstUnfinishedIndex = course.lessons.findIndex(l => !userProgress.completedLessonIds.includes(l.id));
+    const startIndex = firstUnfinishedIndex >= 0 ? firstUnfinishedIndex : 0;
+    
+    setActiveLessonIndex(startIndex);
+    setCode(course.lessons[startIndex].initialCode);
     setAiFeedback(null);
     setView('course');
   };
 
   const handleStartProject = (project: Project) => {
     setActiveProject(project);
-    setCode(project.starterCode);
+    // Check if we have saved code for this project (persistence for draft work)
+    const savedCode = localStorage.getItem(`softvibe_draft_${project.id}`);
+    setCode(savedCode || project.starterCode);
     setAiFeedback(null);
     setView('project_detail');
   };
@@ -178,6 +196,12 @@ export default function App() {
     }
   };
 
+  const handleSaveProjectDraft = () => {
+    if (!activeProject) return;
+    localStorage.setItem(`softvibe_draft_${activeProject.id}`, code);
+    alert('Progress saved locally!');
+  };
+
   const handleSubmitProject = () => {
     if (!activeProject) return;
     if (!userProgress.completedProjectIds.includes(activeProject.id)) {
@@ -187,6 +211,9 @@ export default function App() {
         hoursLearned: prev.hoursLearned + 2
       }));
     }
+    // Clear draft upon submission
+    localStorage.removeItem(`softvibe_draft_${activeProject.id}`);
+    
     // Simple visual feedback before going back
     setTimeout(() => setView('project_list'), 500);
   };
@@ -195,16 +222,16 @@ export default function App() {
 
   const renderOfflineBanner = () => (
     !isOnline && (
-      <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2">
+      <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 animate-pulse sticky top-0 z-50">
         <WifiOff size={16} /> You are currently offline. Progress will be saved locally. AI features are disabled.
       </div>
     )
   );
 
   const renderDashboard = () => (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
       {/* Header */}
-      <div className="text-center mb-12">
+      <div className="text-center mb-16">
         <div className="inline-flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-full shadow-sm text-sm font-semibold text-blue-600 mb-6 border border-blue-100">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -212,12 +239,12 @@ export default function App() {
           </span>
           Welcome to softvibe
         </div>
-        <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 mb-6 tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 mb-6 tracking-tight">
           Master Programming<br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">One Language at a Time</span>
         </h1>
         <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Learn Python, Java, and C with interactive lessons, hands-on projects, and interactive code practice designed for modern developers.
+          Learn Python, Java, and C with interactive lessons, hands-on practice, and real-world projects designed for Windows developers.
         </p>
       </div>
 
@@ -225,77 +252,61 @@ export default function App() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
         <StatCard 
           title="Hours Learned" 
-          value={userProgress.hoursLearned} 
-          icon={<Clock size={24} className="text-white" />} 
-          colorClass="bg-blue-500" 
+          value={userProgress.hoursLearned.toFixed(1)} 
+          icon={<Clock size={28} className="text-white opacity-80" />} 
+          colorClass="bg-sky-400" 
         />
         <StatCard 
           title="Lessons Completed" 
           value={userProgress.completedLessonIds.length} 
-          icon={<Code size={24} className="text-white" />} 
-          colorClass="bg-emerald-500" 
+          icon={<Code size={28} className="text-white opacity-80" />} 
+          colorClass="bg-emerald-400" 
         />
         <StatCard 
           title="Current Streak" 
           value={`${userProgress.streakDays} days`} 
-          icon={<Flame size={24} className="text-white" />} 
-          colorClass="bg-orange-500" 
+          icon={<Flame size={28} className="text-white opacity-80" />} 
+          colorClass="bg-amber-400" 
         />
         <StatCard 
           title="Projects Built" 
           value={userProgress.completedProjectIds.length} 
-          icon={<Trophy size={24} className="text-white" />} 
-          colorClass="bg-purple-500" 
+          icon={<Trophy size={28} className="text-white opacity-80" />} 
+          colorClass="bg-purple-400" 
         />
       </div>
 
-      {/* Activity Chart */}
-      <div className="mb-16 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <Layout size={20} className="text-blue-600" /> Learning Activity
-        </h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={activityData}>
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
-              <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-              <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
       {/* Course Selection */}
-      <div className="mb-16">
-        <h2 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-2">
+      <div className="mb-20">
+        <h2 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-3">
           <BookOpen className="text-blue-600" /> Choose Your Path
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {COURSES.map(course => (
-            <CourseCard key={course.id} course={course} onSelect={handleStartCourse} />
-          ))}
+          {COURSES.map(course => {
+            const completedLessons = course.lessons.filter(l => userProgress.completedLessonIds.includes(l.id)).length;
+            const progress = Math.round((completedLessons / course.lessons.length) * 100);
+            return (
+              <CourseCard key={course.id} course={course} onSelect={handleStartCourse} progress={progress} />
+            );
+          })}
         </div>
       </div>
       
-      {/* CTA Section */}
-      <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-3xl p-8 md:p-12 text-center shadow-lg text-white relative overflow-hidden">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-         <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/2"></div>
-         
-         <div className="relative z-10">
+      {/* Practice Lab CTA */}
+      <div className="bg-white rounded-3xl p-8 md:p-12 text-center shadow-lg border border-gray-100 relative overflow-hidden mb-12">
+         <div className="relative z-10 max-w-3xl mx-auto">
            <div className="flex justify-center mb-6">
-              <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-sm">
-                <Code className="w-10 h-10 text-white" />
+              <div className="bg-indigo-50 p-4 rounded-2xl">
+                <Code className="w-10 h-10 text-indigo-600" />
               </div>
            </div>
-           <h2 className="text-2xl md:text-3xl font-bold mb-4">Ready to Build Real Software?</h2>
-           <p className="text-blue-100 mb-8 max-w-xl mx-auto">Jump into our interactive project lab and start experimenting with code right away. Build portfolios, not just snippets.</p>
+           <h2 className="text-3xl font-bold text-slate-900 mb-4">Ready to Start Coding?</h2>
+           <p className="text-slate-600 mb-8 max-w-xl mx-auto">Jump into our interactive practice lab and start experimenting with code right away.</p>
            <button 
             onClick={() => setView('project_list')}
-            className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors inline-flex items-center gap-2 shadow-lg"
+            className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200"
            >
-              Open Project Lab <Layers size={18} />
+             <Layout size={20} /> Open Practice Lab
            </button>
          </div>
       </div>
@@ -415,11 +426,17 @@ export default function App() {
           </div>
           <div className="flex gap-3">
              <button 
+               onClick={handleSaveProjectDraft}
+               className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 flex items-center gap-2"
+             >
+               <Save size={16} /> Save Draft
+             </button>
+             <button 
                onClick={handleSubmitProject}
                className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-all
                ${isCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
              >
-                {isCompleted ? <><Check size={16}/> Completed</> : <><Save size={16}/> Submit Project</>}
+                {isCompleted ? <><Check size={16}/> Completed</> : <><CheckCircle size={16}/> Submit Project</>}
              </button>
           </div>
         </header>
@@ -497,7 +514,7 @@ export default function App() {
            <div className="flex gap-3">
              <div className="relative">
                <select 
-                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
                 value={langFilter}
                 onChange={(e) => setLangFilter(e.target.value)}
                >
@@ -510,7 +527,7 @@ export default function App() {
              </div>
              <div className="relative">
                <select 
-                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
                 value={difficultyFilter}
                 onChange={(e) => setDifficultyFilter(e.target.value)}
                >
@@ -534,21 +551,21 @@ export default function App() {
                 const isDone = userProgress.completedProjectIds.includes(project.id);
                 return (
                  <div key={project.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-lg transition-shadow group">
-                    <div className="flex gap-5">
-                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-colors
-                          ${project.language === 'Python' ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-100' : 
+                    <div className="flex gap-5 w-full md:w-auto">
+                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0 transition-colors
+                          ${project.language === 'Python' ? 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-100' : 
                             project.language === 'Java' ? 'bg-orange-50 text-orange-600 group-hover:bg-orange-100' : 
-                            'bg-purple-50 text-purple-600 group-hover:bg-purple-100'}`}>
+                            'bg-violet-50 text-violet-600 group-hover:bg-violet-100'}`}>
                           {project.language === 'Python' ? '🐍' : project.language === 'Java' ? '☕' : '⚡'}
                        </div>
-                       <div>
+                       <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                              <h3 className="font-bold text-lg text-slate-900">{project.title}</h3>
                              {isDone && <CheckCircle size={16} className="text-green-500 fill-green-100" />}
                           </div>
-                          <p className="text-slate-500 text-sm mb-3 line-clamp-1">{project.description}</p>
+                          <p className="text-slate-500 text-sm mb-3 line-clamp-2 md:line-clamp-1 max-w-xl">{project.description}</p>
                           <div className="flex gap-2">
-                            <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-md font-medium border border-gray-200">{project.language}</span>
+                            <span className="px-2.5 py-1 bg-gray-50 text-gray-600 text-xs rounded-md font-medium border border-gray-100">{project.language}</span>
                             <span className={`px-2.5 py-1 text-xs rounded-md font-medium border
                                ${project.difficulty === 'Beginner' ? 'bg-green-50 text-green-700 border-green-100' : 
                                  project.difficulty === 'Intermediate' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 
@@ -560,9 +577,9 @@ export default function App() {
                     </div>
                     <button 
                       onClick={() => handleStartProject(project)}
-                      className="px-6 py-2.5 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition-colors whitespace-nowrap shadow-md shadow-slate-200"
+                      className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition-colors whitespace-nowrap shadow-md shadow-slate-200 flex items-center justify-center gap-2"
                     >
-                       {isDone ? 'Review Code' : 'Start Project'}
+                       {isDone ? 'Review Code' : 'Start Project'} <ChevronRight size={16} />
                     </button>
                  </div>
               )})

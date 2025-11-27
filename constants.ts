@@ -42,7 +42,7 @@ export const COURSES: Course[] = [
     title: 'Python Programming',
     level: 'Beginner Level',
     description: 'Learn the most popular programming language for beginners. Perfect for data science, web development, and automation.',
-    color: 'bg-blue-500',
+    color: 'bg-cyan-500',
     icon: '🐍',
     lessons: [
       {
@@ -99,7 +99,7 @@ export const COURSES: Course[] = [
     title: 'C Programming',
     level: 'Intermediate Level',
     description: 'Understand the fundamentals of programming with C. Learn memory management and system-level programming.',
-    color: 'bg-purple-500',
+    color: 'bg-violet-500',
     icon: '⚡',
     lessons: [
       {
