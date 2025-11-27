@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { 
   BookOpen, 
   Code, 
@@ -11,7 +12,12 @@ import {
   Play,
   MessageSquare,
   ArrowLeft,
-  Layers
+  Layers,
+  Wifi,
+  WifiOff,
+  Filter,
+  Save,
+  Check
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { COURSES, PROJECTS, INITIAL_PROGRESS } from './constants';
@@ -19,9 +25,8 @@ import { Course, Lesson, UserProgress, Project } from './types';
 import { CodeEditor } from './components/CodeEditor';
 import { askAiTutor } from './services/geminiService';
 
-// --- Components Defined Here for Single File Cohesion ---
+// --- Helper Components ---
 
-// 1. Stats Card Component
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; colorClass: string }> = ({ title, value, icon, colorClass }) => (
   <div className={`p-6 rounded-2xl text-white shadow-lg relative overflow-hidden ${colorClass} transition-transform hover:scale-105`}>
     <div className="flex justify-between items-start mb-4">
@@ -36,15 +41,18 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
   </div>
 );
 
-// 2. Course Card Component
 const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void }> = ({ course, onSelect }) => (
-  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-full">
-    <div className="flex justify-center mb-6">
-      <div className={`w-16 h-16 rounded-full ${course.color} bg-opacity-20 flex items-center justify-center text-4xl shadow-inner`}>
+  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-full group">
+    <div className="flex justify-between items-start mb-4">
+      <div className={`w-14 h-14 rounded-2xl ${course.color} bg-opacity-10 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform`}>
         {course.icon}
       </div>
+      <div className={`px-3 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-600`}>
+        {course.lessons.length} Lessons
+      </div>
     </div>
-    <h3 className={`text-xl font-bold mb-1 ${course.language === 'Python' ? 'text-blue-600' : course.language === 'Java' ? 'text-orange-600' : 'text-purple-600'}`}>
+    
+    <h3 className={`text-xl font-bold mb-1 text-slate-900 group-hover:text-blue-600 transition-colors`}>
       {course.title}
     </h3>
     <p className="text-sm text-gray-500 font-medium mb-4">{course.level}</p>
@@ -52,111 +60,164 @@ const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void }> = 
       {course.description}
     </p>
     
-    <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-3 rounded-xl">
-      <div className="text-center">
-        <p className="text-xl font-bold text-gray-800">{course.lessons.length}</p>
-        <p className="text-xs text-gray-500">Lessons</p>
-      </div>
-      <div className="text-center border-l border-gray-200">
-        <p className="text-xl font-bold text-gray-800">0h</p>
-        <p className="text-xs text-gray-500">Duration</p>
-      </div>
+    <div className="w-full bg-gray-100 rounded-full h-1.5 mb-6">
+      <div className={`h-1.5 rounded-full ${course.color.replace('bg-', 'bg-')}`} style={{ width: '0%' }}></div>
     </div>
 
     <button 
       onClick={() => onSelect(course)}
-      className={`w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-colors ${course.color} hover:brightness-110`}
+      className={`w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${course.color} hover:shadow-lg hover:brightness-105`}
     >
       Start Learning <ChevronRight size={18} />
     </button>
   </div>
 );
 
-// --- Main Application Logic ---
+// --- Main Application ---
 
 export default function App() {
-  const [view, setView] = useState<'dashboard' | 'course' | 'project_list'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'course' | 'project_list' | 'project_detail'>('dashboard');
+  
+  // Persistence: Initialize state from local storage
+  const [userProgress, setUserProgress] = useState<UserProgress>(() => {
+    try {
+      const saved = localStorage.getItem('softvibe_progress');
+      return saved ? JSON.parse(saved) : INITIAL_PROGRESS;
+    } catch (e) {
+      return INITIAL_PROGRESS;
+    }
+  });
+
+  // Offline Detection
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    localStorage.setItem('softvibe_progress', JSON.stringify(userProgress));
+  }, [userProgress]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Application State
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
-  const [userProgress, setUserProgress] = useState<UserProgress>(INITIAL_PROGRESS);
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  
   const [code, setCode] = useState('');
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // Basic analytics data for the chart
+  // Filters
+  const [langFilter, setLangFilter] = useState('All');
+  const [difficultyFilter, setDifficultyFilter] = useState('All');
+
+  // Chart Data
   const activityData = [
-    { name: 'Mon', hours: 1.5 },
-    { name: 'Tue', hours: 2.3 },
-    { name: 'Wed', hours: 0.5 },
-    { name: 'Thu', hours: 3.0 },
-    { name: 'Fri', hours: 2.1 },
-    { name: 'Sat', hours: 4.0 },
-    { name: 'Sun', hours: 1.2 },
+    { name: 'Mon', hours: userProgress.hoursLearned > 0 ? 1.5 : 0 },
+    { name: 'Tue', hours: userProgress.hoursLearned > 2 ? 2.0 : 0 },
+    { name: 'Wed', hours: userProgress.hoursLearned > 5 ? 3.5 : 0 },
+    { name: 'Thu', hours: userProgress.hoursLearned > 10 ? 2.0 : 0 },
+    { name: 'Fri', hours: 0 },
+    { name: 'Sat', hours: 0 },
+    { name: 'Sun', hours: 0 },
   ];
 
-  useEffect(() => {
-    if (activeCourse) {
-      setCode(activeCourse.lessons[activeLessonIndex].initialCode);
-      setAiFeedback(null);
-    }
-  }, [activeCourse, activeLessonIndex]);
+  // --- Handlers ---
 
   const handleStartCourse = (course: Course) => {
     setActiveCourse(course);
     setActiveLessonIndex(0);
+    setCode(course.lessons[0].initialCode);
+    setAiFeedback(null);
     setView('course');
   };
 
-  const handleAskAi = async () => {
-    if (!activeCourse) return;
+  const handleStartProject = (project: Project) => {
+    setActiveProject(project);
+    setCode(project.starterCode);
+    setAiFeedback(null);
+    setView('project_detail');
+  };
+
+  const handleAskAi = async (context: string, lang: string) => {
+    if (!isOnline) return;
     setIsAiLoading(true);
     setAiFeedback(null);
-    const currentLesson = activeCourse.lessons[activeLessonIndex];
     
-    // Mock context extraction from HTML content (simple regex to strip tags for AI context)
-    const context = currentLesson.content.replace(/<[^>]*>?/gm, '');
-    
-    const feedback = await askAiTutor(code, context, activeCourse.language);
+    const feedback = await askAiTutor(code, context, lang);
     setAiFeedback(feedback);
     setIsAiLoading(false);
   };
 
-  const handleNextLesson = () => {
+  const handleCompleteLesson = () => {
     if (!activeCourse) return;
-    
-    // Mark complete
     const currentLessonId = activeCourse.lessons[activeLessonIndex].id;
+    
     if (!userProgress.completedLessonIds.includes(currentLessonId)) {
       setUserProgress(prev => ({
         ...prev,
         completedLessonIds: [...prev.completedLessonIds, currentLessonId],
-        lessonsCompleted: prev.completedLessonIds.length + 1
+        hoursLearned: prev.hoursLearned + 0.5 // Simulate time spent
       }));
     }
 
     if (activeLessonIndex < activeCourse.lessons.length - 1) {
       setActiveLessonIndex(prev => prev + 1);
+      setCode(activeCourse.lessons[activeLessonIndex + 1].initialCode);
+      setAiFeedback(null);
     } else {
-      // Course complete logic could go here
       setView('dashboard');
     }
   };
 
+  const handleSubmitProject = () => {
+    if (!activeProject) return;
+    if (!userProgress.completedProjectIds.includes(activeProject.id)) {
+      setUserProgress(prev => ({
+        ...prev,
+        completedProjectIds: [...prev.completedProjectIds, activeProject.id],
+        hoursLearned: prev.hoursLearned + 2
+      }));
+    }
+    // Simple visual feedback before going back
+    setTimeout(() => setView('project_list'), 500);
+  };
+
   // --- Views ---
 
+  const renderOfflineBanner = () => (
+    !isOnline && (
+      <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2">
+        <WifiOff size={16} /> You are currently offline. Progress will be saved locally. AI features are disabled.
+      </div>
+    )
+  );
+
   const renderDashboard = () => (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
       {/* Header */}
       <div className="text-center mb-12">
-        <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm text-sm font-medium text-blue-600 mb-4 border border-blue-100">
-          <Flame size={16} className="text-orange-500 fill-orange-500" /> Welcome to CodeMaster
+        <div className="inline-flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-full shadow-sm text-sm font-semibold text-blue-600 mb-6 border border-blue-100">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+          </span>
+          Welcome to softvibe
         </div>
-        <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4 tracking-tight">
+        <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 mb-6 tracking-tight">
           Master Programming<br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">One Language at a Time</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">One Language at a Time</span>
         </h1>
         <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Learn Python, Java, and C with interactive lessons, hands-on practice, and real-world projects designed for developers.
+          Learn Python, Java, and C with interactive lessons, hands-on projects, and interactive code practice designed for modern developers.
         </p>
       </div>
 
@@ -166,39 +227,39 @@ export default function App() {
           title="Hours Learned" 
           value={userProgress.hoursLearned} 
           icon={<Clock size={24} className="text-white" />} 
-          colorClass="bg-cyan-400" 
+          colorClass="bg-blue-500" 
         />
         <StatCard 
           title="Lessons Completed" 
           value={userProgress.completedLessonIds.length} 
           icon={<Code size={24} className="text-white" />} 
-          colorClass="bg-emerald-400" 
+          colorClass="bg-emerald-500" 
         />
         <StatCard 
           title="Current Streak" 
           value={`${userProgress.streakDays} days`} 
           icon={<Flame size={24} className="text-white" />} 
-          colorClass="bg-amber-400" 
+          colorClass="bg-orange-500" 
         />
         <StatCard 
           title="Projects Built" 
           value={userProgress.completedProjectIds.length} 
           icon={<Trophy size={24} className="text-white" />} 
-          colorClass="bg-purple-400" 
+          colorClass="bg-purple-500" 
         />
       </div>
 
-      {/* Activity Chart (Optional but satisfies rechart requirement) */}
+      {/* Activity Chart */}
       <div className="mb-16 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-          <Layout size={20} /> Learning Activity
+        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+          <Layout size={20} className="text-blue-600" /> Learning Activity
         </h3>
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={activityData}>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
               <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94a3b8'}} />
-              <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+              <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
               <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
             </BarChart>
           </ResponsiveContainer>
@@ -206,8 +267,8 @@ export default function App() {
       </div>
 
       {/* Course Selection */}
-      <div className="mb-12">
-        <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-2">
+      <div className="mb-16">
+        <h2 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-2">
           <BookOpen className="text-blue-600" /> Choose Your Path
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -218,19 +279,25 @@ export default function App() {
       </div>
       
       {/* CTA Section */}
-      <div className="bg-white rounded-3xl p-8 md:p-12 text-center shadow-sm border border-gray-100 relative overflow-hidden">
-         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
-         <div className="flex justify-center mb-4">
-            <Code className="w-12 h-12 text-blue-600" />
+      <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-3xl p-8 md:p-12 text-center shadow-lg text-white relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+         <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/2"></div>
+         
+         <div className="relative z-10">
+           <div className="flex justify-center mb-6">
+              <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-sm">
+                <Code className="w-10 h-10 text-white" />
+              </div>
+           </div>
+           <h2 className="text-2xl md:text-3xl font-bold mb-4">Ready to Build Real Software?</h2>
+           <p className="text-blue-100 mb-8 max-w-xl mx-auto">Jump into our interactive project lab and start experimenting with code right away. Build portfolios, not just snippets.</p>
+           <button 
+            onClick={() => setView('project_list')}
+            className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors inline-flex items-center gap-2 shadow-lg"
+           >
+              Open Project Lab <Layers size={18} />
+           </button>
          </div>
-         <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">Ready to Start Coding?</h2>
-         <p className="text-slate-600 mb-8 max-w-xl mx-auto">Jump into our interactive practice lab and start experimenting with code right away.</p>
-         <button 
-          onClick={() => setView('project_list')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200"
-         >
-            Open Project Lab <Layers size={18} />
-         </button>
       </div>
     </div>
   );
@@ -238,67 +305,71 @@ export default function App() {
   const renderCourseView = () => {
     if (!activeCourse) return null;
     const currentLesson = activeCourse.lessons[activeLessonIndex];
+    const context = currentLesson.content.replace(/<[^>]*>?/gm, '');
 
     return (
       <div className="flex flex-col h-screen bg-slate-50">
-        {/* Top Navigation */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-4">
-            <button onClick={() => setView('dashboard')} className="text-gray-500 hover:text-gray-900 transition-colors">
+            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600">
               <ArrowLeft size={20} />
             </button>
             <div>
-               <h2 className="font-bold text-gray-900">{activeCourse.title}</h2>
-               <p className="text-xs text-gray-500">Lesson {activeLessonIndex + 1} of {activeCourse.lessons.length}: {currentLesson.title}</p>
+               <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                 {activeCourse.icon} {activeCourse.title}
+               </h2>
+               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                  <span className="font-medium text-blue-600">Lesson {activeLessonIndex + 1}</span>
+                  <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                  <span>{currentLesson.title}</span>
+               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
-                <span className="w-2 h-2 rounded-full bg-green-500"></span> Autosaved
+             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1.5 rounded-full">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div> 
+                {isOnline ? 'Online' : 'Offline Mode'}
              </div>
-             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-                Run Code
+             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm">
+                <Play size={16} /> Run Code
              </button>
           </div>
         </header>
 
-        {/* Main Split Content */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          
-          {/* Left: Lesson Content */}
+          {/* Lesson Content */}
           <div className="w-full md:w-5/12 lg:w-1/3 p-6 overflow-y-auto border-r border-gray-200 bg-white">
              <div className="prose prose-slate prose-sm max-w-none">
-                <h1 className="text-2xl font-bold text-slate-900 mb-4">{currentLesson.title}</h1>
-                {/* Rendering HTML content from constant safely */}
+                <h1 className="text-2xl font-bold text-slate-900 mb-6">{currentLesson.title}</h1>
                 <div dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
              </div>
 
-             {/* AI Tutor Feedback Area */}
+             {/* AI Feedback */}
              {aiFeedback && (
-               <div className="mt-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+               <div className="mt-8 p-4 bg-indigo-50 border border-indigo-100 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2">
                   <h4 className="flex items-center gap-2 text-indigo-800 font-bold text-sm mb-2">
                     <MessageSquare size={16} /> AI Tutor Feedback
                   </h4>
-                  <div className="prose prose-sm text-indigo-900">
-                    <React.Markdown>{aiFeedback}</React.Markdown>
+                  <div className="prose prose-sm text-indigo-900 leading-relaxed">
+                    <ReactMarkdown>{aiFeedback}</ReactMarkdown>
                   </div>
                </div>
              )}
              
-             <div className="mt-8 flex gap-3">
+             <div className="mt-8">
                 <button 
-                  onClick={handleAskAi}
-                  disabled={isAiLoading}
-                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-purple-200 text-purple-700 rounded-xl hover:bg-purple-50 transition-colors font-medium ${isAiLoading ? 'opacity-50' : ''}`}
+                  onClick={() => handleAskAi(context, activeCourse.language)}
+                  disabled={isAiLoading || !isOnline}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 hover:border-indigo-300 transition-colors font-semibold ${isAiLoading || !isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                   {isAiLoading ? 'Thinking...' : 'Ask AI Helper'} <MessageSquare size={18} />
+                   {isAiLoading ? 'Thinking...' : isOnline ? 'Get AI Help' : 'AI Unavailable (Offline)'} <MessageSquare size={18} />
                 </button>
              </div>
           </div>
 
-          {/* Right: Code Editor */}
+          {/* Code Editor */}
           <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden">
                <CodeEditor 
                   code={code} 
                   onChange={setCode} 
@@ -306,76 +377,208 @@ export default function App() {
                />
             </div>
             
-            {/* Editor Footer / Console Simulation */}
-            <div className="h-32 bg-[#1e1e1e] border-t border-gray-800 p-4 overflow-y-auto">
-               <p className="font-mono text-xs text-gray-500 mb-2">CONSOLE OUTPUT</p>
-               <p className="font-mono text-sm text-green-400">{'>'} Ready for execution...</p>
-            </div>
-
-            {/* Navigation Footer */}
-            <div className="bg-gray-900 border-t border-gray-800 p-4 flex justify-end">
+            <div className="bg-gray-900 border-t border-gray-800 p-4 flex justify-between items-center">
+               <span className="text-gray-500 text-xs font-mono">Console Ready</span>
                <button 
-                onClick={handleNextLesson}
-                className="bg-white text-black px-6 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors flex items-center gap-2"
+                onClick={handleCompleteLesson}
+                className="bg-white text-black px-6 py-2 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center gap-2"
                >
                  {activeLessonIndex < activeCourse.lessons.length - 1 ? 'Next Lesson' : 'Finish Course'} <ChevronRight size={18} />
                </button>
             </div>
           </div>
-
         </div>
       </div>
     );
   };
 
-  const renderProjectList = () => (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-       <div className="flex items-center gap-4 mb-8">
-         <button onClick={() => setView('dashboard')} className="p-2 hover:bg-gray-100 rounded-full">
-            <ArrowLeft size={24} />
-         </button>
-         <h1 className="text-3xl font-bold text-slate-900">Practice Projects</h1>
-       </div>
-       
-       <div className="grid gap-6">
-          {PROJECTS.map(project => (
-             <div key={project.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:shadow-md transition-shadow">
-                <div className="flex gap-4">
-                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0
-                      ${project.language === 'Python' ? 'bg-blue-100 text-blue-600' : 
-                        project.language === 'Java' ? 'bg-orange-100 text-orange-600' : 
-                        'bg-purple-100 text-purple-600'}`}>
-                      {project.language === 'Python' ? '🐍' : project.language === 'Java' ? '☕' : '⚡'}
-                   </div>
-                   <div>
-                      <h3 className="font-bold text-lg text-slate-900">{project.title}</h3>
-                      <p className="text-slate-500 text-sm mb-2">{project.description}</p>
-                      <div className="flex gap-2">
-                        <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md font-medium">{project.language}</span>
-                        <span className={`px-2 py-1 text-xs rounded-md font-medium border
-                           ${project.difficulty === 'Beginner' ? 'bg-green-50 text-green-700 border-green-100' : 
-                             project.difficulty === 'Intermediate' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 
-                             'bg-red-50 text-red-700 border-red-100'}`}>
-                           {project.difficulty}
-                        </span>
-                      </div>
-                   </div>
-                </div>
-                <button className="px-6 py-2 border border-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap">
-                   View Details
-                </button>
-             </div>
-          ))}
-       </div>
-    </div>
-  );
+  const renderProjectDetail = () => {
+    if (!activeProject) return null;
+    const isCompleted = userProgress.completedProjectIds.includes(activeProject.id);
 
-  // Render Logic
+    return (
+      <div className="flex flex-col h-screen bg-slate-50">
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setView('project_list')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600">
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+               <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                 <Layers size={20} className="text-blue-600"/> {activeProject.title}
+               </h2>
+               <div className="flex gap-2 mt-1">
+                 <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">{activeProject.language}</span>
+                 <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">{activeProject.difficulty}</span>
+               </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+             <button 
+               onClick={handleSubmitProject}
+               className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-all
+               ${isCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+             >
+                {isCompleted ? <><Check size={16}/> Completed</> : <><Save size={16}/> Submit Project</>}
+             </button>
+          </div>
+        </header>
+
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+           {/* Project Instructions */}
+           <div className="w-full md:w-1/3 p-6 overflow-y-auto border-r border-gray-200 bg-white">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Requirements</h3>
+              <p className="text-slate-600 leading-relaxed mb-6">{activeProject.description}</p>
+              
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+                <h4 className="font-semibold text-blue-800 text-sm mb-2">Tips</h4>
+                <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
+                  <li>Break down the problem into small functions.</li>
+                  <li>Use comments to plan your logic.</li>
+                  <li>Check console output for errors.</li>
+                </ul>
+              </div>
+
+              {aiFeedback && (
+               <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                  <h4 className="flex items-center gap-2 text-indigo-800 font-bold text-sm mb-2">
+                    <MessageSquare size={16} /> AI Assistant
+                  </h4>
+                  <div className="prose prose-sm text-indigo-900">
+                    <ReactMarkdown>{aiFeedback}</ReactMarkdown>
+                  </div>
+               </div>
+              )}
+
+              <button 
+                  onClick={() => handleAskAi(activeProject.description, activeProject.language)}
+                  disabled={isAiLoading || !isOnline}
+                  className={`w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm ${isAiLoading || !isOnline ? 'opacity-50' : ''}`}
+              >
+                  {isAiLoading ? 'Analyzing...' : 'Ask for a Hint'}
+              </button>
+           </div>
+
+           {/* Editor */}
+           <div className="flex-1 flex flex-col bg-[#1e1e1e]">
+              <div className="flex-1 overflow-hidden">
+                <CodeEditor code={code} onChange={setCode} language={activeProject.language} />
+              </div>
+              <div className="h-32 bg-[#1e1e1e] border-t border-gray-800 p-4 overflow-y-auto font-mono text-sm">
+                <div className="text-gray-500 text-xs mb-2">OUTPUT TERMINAL</div>
+                <div className="text-green-400">$ Project workspace ready...</div>
+              </div>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProjectList = () => {
+    const filteredProjects = PROJECTS.filter(p => {
+      const matchLang = langFilter === 'All' || p.language === langFilter;
+      const matchDiff = difficultyFilter === 'All' || p.difficulty === difficultyFilter;
+      return matchLang && matchDiff;
+    });
+
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in">
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+           <div className="flex items-center gap-4">
+             <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white hover:shadow-sm rounded-full transition-all">
+                <ArrowLeft size={24} className="text-slate-600" />
+             </button>
+             <div>
+               <h1 className="text-3xl font-bold text-slate-900">Practice Lab</h1>
+               <p className="text-slate-500 mt-1">Real-world challenges to test your skills</p>
+             </div>
+           </div>
+           
+           <div className="flex gap-3">
+             <div className="relative">
+               <select 
+                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={langFilter}
+                onChange={(e) => setLangFilter(e.target.value)}
+               >
+                 <option value="All">All Languages</option>
+                 <option value="Python">Python</option>
+                 <option value="Java">Java</option>
+                 <option value="C">C</option>
+               </select>
+               <Filter size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+             </div>
+             <div className="relative">
+               <select 
+                className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={difficultyFilter}
+                onChange={(e) => setDifficultyFilter(e.target.value)}
+               >
+                 <option value="All">All Levels</option>
+                 <option value="Beginner">Beginner</option>
+                 <option value="Intermediate">Intermediate</option>
+                 <option value="Advanced">Advanced</option>
+               </select>
+               <div className="absolute right-3 top-3 text-gray-400 pointer-events-none">▼</div>
+             </div>
+           </div>
+         </div>
+         
+         <div className="grid gap-6">
+            {filteredProjects.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
+                <p className="text-gray-500">No projects found matching your filters.</p>
+              </div>
+            ) : (
+              filteredProjects.map(project => {
+                const isDone = userProgress.completedProjectIds.includes(project.id);
+                return (
+                 <div key={project.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-lg transition-shadow group">
+                    <div className="flex gap-5">
+                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-colors
+                          ${project.language === 'Python' ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-100' : 
+                            project.language === 'Java' ? 'bg-orange-50 text-orange-600 group-hover:bg-orange-100' : 
+                            'bg-purple-50 text-purple-600 group-hover:bg-purple-100'}`}>
+                          {project.language === 'Python' ? '🐍' : project.language === 'Java' ? '☕' : '⚡'}
+                       </div>
+                       <div>
+                          <div className="flex items-center gap-2 mb-1">
+                             <h3 className="font-bold text-lg text-slate-900">{project.title}</h3>
+                             {isDone && <CheckCircle size={16} className="text-green-500 fill-green-100" />}
+                          </div>
+                          <p className="text-slate-500 text-sm mb-3 line-clamp-1">{project.description}</p>
+                          <div className="flex gap-2">
+                            <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-md font-medium border border-gray-200">{project.language}</span>
+                            <span className={`px-2.5 py-1 text-xs rounded-md font-medium border
+                               ${project.difficulty === 'Beginner' ? 'bg-green-50 text-green-700 border-green-100' : 
+                                 project.difficulty === 'Intermediate' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 
+                                 'bg-red-50 text-red-700 border-red-100'}`}>
+                               {project.difficulty}
+                            </span>
+                          </div>
+                       </div>
+                    </div>
+                    <button 
+                      onClick={() => handleStartProject(project)}
+                      className="px-6 py-2.5 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition-colors whitespace-nowrap shadow-md shadow-slate-200"
+                    >
+                       {isDone ? 'Review Code' : 'Start Project'}
+                    </button>
+                 </div>
+              )})
+            )}
+         </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
+      {renderOfflineBanner()}
       {view === 'dashboard' && renderDashboard()}
       {view === 'course' && renderCourseView()}
       {view === 'project_list' && renderProjectList()}
+      {view === 'project_detail' && renderProjectDetail()}
     </div>
   );
 }
