@@ -1,8 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize the client with the API key from environment variables
-// Note: In a real production app, requests should be proxied through a backend to hide the key.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to safely get the API key without crashing in browser environments where 'process' is undefined
+const getApiKey = (): string | undefined => {
+  try {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env) {
+      // @ts-ignore
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    console.warn("Error accessing process.env:", e);
+  }
+  return undefined;
+};
 
 export const askAiTutor = async (
   code: string,
@@ -10,8 +20,18 @@ export const askAiTutor = async (
   language: string
 ): Promise<string> => {
   try {
+    const apiKey = getApiKey();
+    
+    if (!apiKey) {
+      console.warn("API Key is missing. AI features are disabled.");
+      return "AI assistance is currently unavailable because the API key is missing. Please check your configuration.";
+    }
+
+    // Initialize the client only when needed
+    const ai = new GoogleGenAI({ apiKey });
+    
     const model = "gemini-2.5-flash";
-    const systemInstruction = `You are a friendly and encouraging coding tutor for the CodeMaster platform. 
+    const systemInstruction = `You are a friendly and encouraging coding tutor for the softvibe platform. 
     Your student is learning ${language}. 
     Analyze the provided code and the lesson context. 
     If the user asks for help, provide a hint, not the full solution immediately. 
@@ -40,6 +60,6 @@ export const askAiTutor = async (
     return response.text || "I couldn't generate a response at this time.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "Sorry, I'm having trouble connecting to the AI tutor right now. Please check your connection or API key.";
+    return "Sorry, I'm having trouble connecting to the AI tutor right now. Please check your connection.";
   }
 };
