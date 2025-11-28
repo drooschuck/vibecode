@@ -1,0 +1,31 @@
+/* 
+  Global Styles 
+  Note: In a production build with Tailwind, you would include:
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+*/
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: #f8fafc;
+}
+
+/* Custom scrollbar for code editor */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
+}
