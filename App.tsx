@@ -17,7 +17,8 @@ import {
   WifiOff,
   Filter,
   Save,
-  Check
+  Check,
+  Eye
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { COURSES, PROJECTS, INITIAL_PROGRESS } from './constants';
@@ -367,13 +368,24 @@ export default function App() {
                </div>
              )}
              
-             <div className="mt-8">
+             <div className="mt-8 space-y-3">
                 <button 
                   onClick={() => handleAskAi(context, activeCourse.language)}
                   disabled={isAiLoading || !isOnline}
                   className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 hover:border-indigo-300 transition-colors font-semibold ${isAiLoading || !isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                    {isAiLoading ? 'Thinking...' : isOnline ? 'Get AI Help' : 'AI Unavailable (Offline)'} <MessageSquare size={18} />
+                </button>
+
+                <button 
+                  onClick={() => {
+                    if (window.confirm("This will replace your current code with the solution. Are you sure?")) {
+                      setCode(currentLesson.solutionCode);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-slate-500 hover:text-blue-600 transition-colors text-sm font-medium"
+                >
+                   <Eye size={16} /> Reveal Solution Code
                 </button>
              </div>
           </div>
