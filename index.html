@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>softvibe</title>
     
+    <!-- Fix 404 Favicon Error -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+    
     <!-- 
       Restored Tailwind CDN to ensure styles load correctly without a server-side build step.
       This fixes the "Content unavailable" error regarding missing stylesheets.
@@ -33,6 +36,15 @@
                 500: '#3b82f6',
                 600: '#2563eb',
                 900: '#1e3a8a',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
               }
             }
           }

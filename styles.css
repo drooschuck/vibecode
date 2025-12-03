@@ -8,6 +8,11 @@ html {
   text-size-adjust: 100%;         /* Standard property */
 }
 
+/* Ensure full height for app container */
+html, body, #root {
+  height: 100%;
+}
+
 body {
   background-color: #f8fafc;
 }
