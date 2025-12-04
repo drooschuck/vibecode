@@ -1,13 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Initialize AI client lazily to avoid process.env errors during load
+const getAiClient = () => {
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    // @ts-ignore
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return null;
+};
+
 export const askAiTutor = async (
   code: string,
   context: string,
   language: string
 ): Promise<string> => {
   try {
-    // @ts-ignore
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAiClient();
+    if (!ai) return "API Key not configured.";
     
     const model = "gemini-2.5-flash";
     const systemInstruction = `You are a friendly and encouraging coding tutor for the softvibe platform. 
@@ -40,5 +49,42 @@ export const askAiTutor = async (
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "Sorry, I'm having trouble connecting to the AI tutor right now. Please check your connection.";
+  }
+};
+
+export const executeCode = async (
+  code: string,
+  language: string
+): Promise<string> => {
+  try {
+    const ai = getAiClient();
+    if (!ai) return "Error: API Key missing. execution disabled.";
+
+    const systemInstruction = `You are a code execution engine. 
+    Your task is to simulate the execution of the provided ${language} code and return ONLY the standard output (stdout).
+    Do not provide explanations, markdown formatting, or introductory text.
+    If there are syntax errors or logic errors, simulate the error message a real compiler/interpreter would produce.`;
+
+    const prompt = `
+    Code to execute:
+    \`\`\`${language.toLowerCase()}
+    ${code}
+    \`\`\`
+    
+    Return the output now.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+      },
+    });
+
+    return response.text || "";
+  } catch (error) {
+    console.error("Execution Error:", error);
+    return "Error: Execution timed out or failed. Please check your connection.";
   }
 };

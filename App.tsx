@@ -18,13 +18,15 @@ import {
   Filter,
   Save,
   Check,
-  Eye
+  Eye,
+  Terminal,
+  RotateCcw
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { COURSES, PROJECTS, INITIAL_PROGRESS } from './constants';
 import { Course, Lesson, UserProgress, Project } from './types';
 import { CodeEditor } from './components/CodeEditor';
-import { askAiTutor } from './services/geminiService';
+import { askAiTutor, executeCode } from './services/geminiService';
 
 // --- Helper Components ---
 
@@ -125,6 +127,8 @@ export default function App() {
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   
   const [code, setCode] = useState('');
+  const [output, setOutput] = useState('');
+  const [isExecuting, setIsExecuting] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
@@ -153,6 +157,7 @@ export default function App() {
     
     setActiveLessonIndex(startIndex);
     setCode(course.lessons[startIndex].initialCode);
+    setOutput('');
     setAiFeedback(null);
     setView('course');
   };
@@ -162,8 +167,26 @@ export default function App() {
     // Check if we have saved code for this project (persistence for draft work)
     const savedCode = localStorage.getItem(`softvibe_draft_${project.id}`);
     setCode(savedCode || project.starterCode);
+    setOutput('');
     setAiFeedback(null);
     setView('project_detail');
+  };
+
+  const handleRunCode = async () => {
+    if (!isOnline) {
+      setOutput("Error: Internet connection required to execute code (Cloud Runner).\nPlease check your connection.");
+      return;
+    }
+    
+    setIsExecuting(true);
+    setOutput("Compiling and running...");
+    
+    // Determine language based on current view
+    const lang = activeCourse ? activeCourse.language : activeProject ? activeProject.language : 'Python';
+    
+    const result = await executeCode(code, lang);
+    setOutput(result);
+    setIsExecuting(false);
   };
 
   const handleAskAi = async (context: string, lang: string) => {
@@ -191,6 +214,7 @@ export default function App() {
     if (activeLessonIndex < activeCourse.lessons.length - 1) {
       setActiveLessonIndex(prev => prev + 1);
       setCode(activeCourse.lessons[activeLessonIndex + 1].initialCode);
+      setOutput('');
       setAiFeedback(null);
     } else {
       setView('dashboard');
@@ -342,8 +366,13 @@ export default function App() {
                 <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div> 
                 {isOnline ? 'Online' : 'Offline Mode'}
              </div>
-             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm">
-                <Play size={16} /> Run Code
+             <button 
+                onClick={handleRunCode}
+                disabled={isExecuting || !isOnline}
+                className={`bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
+             >
+                {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} 
+                {isExecuting ? 'Running...' : 'Run Code'}
              </button>
           </div>
         </header>
@@ -390,24 +419,38 @@ export default function App() {
              </div>
           </div>
 
-          {/* Code Editor */}
+          {/* Code Editor & Output */}
           <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-            <div className="flex-1 overflow-hidden">
-               <CodeEditor 
-                  code={code} 
-                  onChange={setCode} 
-                  language={activeCourse.language} 
-               />
+            <div className="h-[60%] flex flex-col border-b border-gray-800">
+               <div className="flex-1 overflow-hidden">
+                  <CodeEditor 
+                      code={code} 
+                      onChange={setCode} 
+                      language={activeCourse.language} 
+                  />
+               </div>
             </div>
             
-            <div className="bg-gray-900 border-t border-gray-800 p-4 flex justify-between items-center">
-               <span className="text-gray-500 text-xs font-mono">Console Ready</span>
-               <button 
-                onClick={handleCompleteLesson}
-                className="bg-white text-black px-6 py-2 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center gap-2"
-               >
-                 {activeLessonIndex < activeCourse.lessons.length - 1 ? 'Next Lesson' : 'Finish Course'} <ChevronRight size={18} />
-               </button>
+            <div className="h-[40%] flex flex-col">
+              <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center text-xs text-gray-400 font-mono uppercase tracking-wider">
+                 <Terminal size={14} className="mr-2" /> Terminal Output
+              </div>
+              <div className="flex-1 bg-[#151515] p-4 overflow-auto font-mono text-sm">
+                 {output ? (
+                   <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
+                 ) : (
+                   <div className="text-gray-600 italic">Ready to execute. Click "Run Code" to start...</div>
+                 )}
+              </div>
+              
+              <div className="bg-gray-900 border-t border-gray-800 p-3 flex justify-end items-center">
+                 <button 
+                  onClick={handleCompleteLesson}
+                  className="bg-white text-black px-6 py-2 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center gap-2 text-sm"
+                 >
+                   {activeLessonIndex < activeCourse.lessons.length - 1 ? 'Next Lesson' : 'Finish Course'} <ChevronRight size={18} />
+                 </button>
+              </div>
             </div>
           </div>
         </div>
@@ -437,6 +480,13 @@ export default function App() {
             </div>
           </div>
           <div className="flex gap-3">
+             <button 
+                onClick={handleRunCode}
+                disabled={isExecuting || !isOnline}
+                className={`bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
+             >
+                {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} Run
+             </button>
              <button 
                onClick={handleSaveProjectDraft}
                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 flex items-center gap-2"
@@ -490,12 +540,20 @@ export default function App() {
 
            {/* Editor */}
            <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-              <div className="flex-1 overflow-hidden">
+              <div className="h-[60%] overflow-hidden border-b border-gray-800">
                 <CodeEditor code={code} onChange={setCode} language={activeProject.language} />
               </div>
-              <div className="h-32 bg-[#1e1e1e] border-t border-gray-800 p-4 overflow-y-auto font-mono text-sm">
-                <div className="text-gray-500 text-xs mb-2">OUTPUT TERMINAL</div>
-                <div className="text-green-400">$ Project workspace ready...</div>
+              <div className="h-[40%] bg-[#151515] flex flex-col">
+                 <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center text-xs text-gray-400 font-mono uppercase tracking-wider">
+                     <Terminal size={14} className="mr-2" /> Terminal Output
+                 </div>
+                 <div className="flex-1 p-4 overflow-auto font-mono text-sm">
+                    {output ? (
+                      <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
+                    ) : (
+                      <div className="text-green-400">$ Project workspace ready...</div>
+                    )}
+                 </div>
               </div>
            </div>
         </div>
