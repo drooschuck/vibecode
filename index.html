@@ -15,9 +15,24 @@
           NODE_ENV: 'production'
         }
       };
+      
+      // Global Error Handler to debug 'Blank Page' issues
+      window.onerror = function(message, source, lineno, colno, error) {
+        console.error("Global Error:", message, error);
+        // Only show if the root is empty (meaning React failed to mount)
+        if (!document.getElementById('root') || document.getElementById('root').innerHTML === "") {
+            const errorBox = document.createElement('div');
+            errorBox.style.padding = "20px";
+            errorBox.style.fontFamily = "monospace";
+            errorBox.style.color = "red";
+            errorBox.style.backgroundColor = "#ffebee";
+            errorBox.innerHTML = "<strong>Startup Error:</strong><br>" + message;
+            document.body.appendChild(errorBox);
+        }
+      };
     </script>
 
-    <!-- Restored Tailwind CDN -->
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Custom Styles -->
@@ -60,13 +75,15 @@
     <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react-markdown": "https://esm.sh/react-markdown@9?bundle&external=react,react-dom"
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react",
+    "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom",
+    "react-markdown": "https://esm.sh/react-markdown@9.0.1?external=react,react-dom",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
   }
 }
 </script>
