@@ -1,4 +1,12 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import Editor from 'react-simple-code-editor';
+import { highlight, languages } from 'prismjs/components/prism-core';
+import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-java';
+import 'prismjs/components/prism-c';
+import 'prismjs/themes/prism-tomorrow.css'; // Dark theme
 
 interface CodeEditorProps {
   code: string;
@@ -7,32 +15,76 @@ interface CodeEditorProps {
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ code, onChange, language }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value);
+  const [scrollTop, setScrollTop] = useState(0);
+  
+  // Map softvibe languages to Prism languages
+  const getLanguage = (lang: string) => {
+    switch (lang.toLowerCase()) {
+      case 'python': return languages.python;
+      case 'java': return languages.java;
+      case 'c': return languages.c;
+      default: return languages.clike;
+    }
   };
 
-  // Simple line number generation
-  const lineNumbers = code.split('\n').map((_, i) => i + 1).join('\n');
+  const currentLanguage = getLanguage(language);
+
+  // Synchronize scrolling between editor and line numbers
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  // Generate line numbers
+  const lineNumbers = code.split('\n').map((_, i) => i + 1);
 
   return (
     <div className="relative w-full h-full bg-[#1e1e1e] flex text-sm font-mono overflow-hidden">
-      {/* Line Numbers */}
-      <div className="bg-[#2d2d2d] text-gray-500 p-4 text-right select-none leading-6 border-r border-gray-700 hidden sm:block overflow-hidden min-w-[3rem]">
-        <pre>{lineNumbers}</pre>
+      {/* Line Numbers Column */}
+      <div 
+        className="bg-[#2d2d2d] text-gray-500 text-right select-none border-r border-gray-700 hidden sm:block overflow-hidden min-w-[3.5rem]"
+        style={{
+          paddingTop: '16px', // Match Editor padding
+          paddingBottom: '16px'
+        }}
+      >
+        <div 
+          className="pr-4"
+          style={{ 
+            transform: `translateY(-${scrollTop}px)`,
+            transition: 'transform 0s', // Instant sync
+            lineHeight: '1.5', // Match Prism line-height
+            fontFamily: '"JetBrains Mono", monospace' 
+          }}
+        >
+          {lineNumbers.map(n => (
+            <div key={n}>{n}</div>
+          ))}
+        </div>
       </div>
       
-      {/* Text Area */}
-      <textarea
-        value={code}
-        onChange={handleChange}
-        className="flex-1 bg-[#1e1e1e] text-gray-200 p-4 resize-none outline-none border-none leading-6 w-full custom-scrollbar whitespace-pre font-mono"
-        spellCheck={false}
-        autoCapitalize="off"
-        autoComplete="off"
-        autoCorrect="off"
-      />
+      {/* Editor Area */}
+      <div 
+        className="flex-1 h-full overflow-auto custom-scrollbar relative"
+        onScroll={handleScroll}
+      >
+        <Editor
+          value={code}
+          onValueChange={onChange}
+          highlight={code => highlight(code, currentLanguage, language.toLowerCase())}
+          padding={16}
+          style={{
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: 14,
+            backgroundColor: 'transparent',
+            minHeight: '100%',
+            lineHeight: '1.5'
+          }}
+          textareaClassName="focus:outline-none"
+        />
+      </div>
       
-      <div className="absolute top-2 right-2 text-xs text-gray-500 bg-[#2d2d2d] px-2 py-1 rounded uppercase opacity-70 pointer-events-none">
+      {/* Language Badge */}
+      <div className="absolute top-2 right-4 text-xs text-gray-400 bg-[#2d2d2d] px-2 py-1 rounded opacity-80 pointer-events-none z-10 border border-gray-700 shadow-sm">
         {language}
       </div>
     </div>

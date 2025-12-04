@@ -46,3 +46,15 @@ body {
   background: #4b5563;
   border-radius: 4px;
 }
+
+/* React Simple Code Editor Overrides */
+textarea {
+  outline: none !important;
+}
+
+/* Prism Theme Tweaks for consistency */
+code[class*="language-"],
+pre[class*="language-"] {
+  text-shadow: none !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
