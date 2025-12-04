@@ -3,7 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  // Fix: Make children optional to prevent TS error when using ErrorBoundary as a wrapper
+  children?: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -12,10 +13,9 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  // Fix: Explicitly declare state and props to resolve "Property does not exist" errors
+  public state: ErrorBoundaryState = { hasError: false, error: null };
+  declare props: Readonly<ErrorBoundaryProps>;
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
