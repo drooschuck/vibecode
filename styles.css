@@ -2,10 +2,9 @@
   Global Styles 
 */
 
-/* Fix for 'text-size-adjust' browser compatibility warning */
 html {
-  -webkit-text-size-adjust: 100%; /* Chrome 54+, Android 54+, Edge 79+, Safari */
-  text-size-adjust: 100%;         /* Standard property */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* Ensure full height for app container */
