@@ -8,85 +8,21 @@
     <!-- Fix 404 Favicon Error -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
     
-    <!-- POLYFILL: Fix 'process is not defined' error common in React libraries -->
-    <script>
-      window.process = {
-        env: {
-          NODE_ENV: 'production'
-        }
-      };
-      
-      // Global Error Handler to debug 'Blank Page' issues
-      window.onerror = function(message, source, lineno, colno, error) {
-        console.error("Global Error:", message, error);
-        // Only show if the root is empty (meaning React failed to mount)
-        const root = document.getElementById('root');
-        if (root && root.innerHTML.trim().startsWith("Loading")) {
-            const errorBox = document.createElement('div');
-            errorBox.style.padding = "20px";
-            errorBox.style.fontFamily = "monospace";
-            errorBox.style.color = "#dc2626";
-            errorBox.style.backgroundColor = "#fee2e2";
-            errorBox.style.margin = "20px";
-            errorBox.style.borderRadius = "8px";
-            errorBox.innerHTML = "<strong>Startup Error:</strong><br>" + message;
-            document.body.appendChild(errorBox);
-        }
-      };
-    </script>
-
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Custom Styles -->
-    <link rel="stylesheet" href="styles.css">
-    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              mono: ['JetBrains Mono', 'monospace'],
-            },
-            colors: {
-              brand: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                500: '#3b82f6',
-                600: '#2563eb',
-                900: '#1e3a8a',
-              }
-            },
-            animation: {
-              'fade-in': 'fadeIn 0.5s ease-out forwards',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
-            }
-          }
-        }
-      }
-    </script>
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "@google/genai": "https://esm.sh/@google/genai",
-    "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react",
-    "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom",
-    "react-markdown": "https://esm.sh/react-markdown@9.0.1?external=react,react-dom",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6"
   }
 }
 </script>
@@ -100,5 +36,6 @@
         </div>
       </div>
     </div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

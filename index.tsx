@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './styles.css';
 
 interface ErrorBoundaryProps {
   // Fix: Make children optional to prevent TS error when using ErrorBoundary as a wrapper
