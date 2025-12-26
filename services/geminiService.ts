@@ -1,13 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 
-// Initialize AI client lazily to avoid process.env errors during load
-const getAiClient = () => {
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    // @ts-ignore
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
-  }
-  return null;
-};
+import { GoogleGenAI } from "@google/genai";
 
 export const askAiTutor = async (
   code: string,
@@ -15,10 +7,9 @@ export const askAiTutor = async (
   language: string
 ): Promise<string> => {
   try {
-    const ai = getAiClient();
-    if (!ai) return "API Key not configured.";
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
     const systemInstruction = `You are a friendly and encouraging coding tutor for the softvibe platform. 
     Your student is learning ${language}. 
     Analyze the provided code and the lesson context. 
@@ -57,8 +48,7 @@ export const executeCode = async (
   language: string
 ): Promise<string> => {
   try {
-    const ai = getAiClient();
-    if (!ai) return "Error: API Key missing. execution disabled.";
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const systemInstruction = `You are a code execution engine. 
     Your task is to simulate the execution of the provided ${language} code and return ONLY the standard output (stdout).
@@ -75,7 +65,7 @@ export const executeCode = async (
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,

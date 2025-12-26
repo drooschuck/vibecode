@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { 
@@ -439,7 +440,9 @@ export default function App() {
                  {output ? (
                    <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
                  ) : (
-                   <div className="text-gray-600 italic">Ready to execute. Click "Run Code" to start...</div>
+                   <div className="text-gray-600 font-mono">
+                     <span className="text-blue-400">C:\Users\Softvibe\Learner></span> Ready to execute. Click "Run Code" to start...
+                   </div>
                  )}
               </div>
               
@@ -551,7 +554,10 @@ export default function App() {
                     {output ? (
                       <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
                     ) : (
-                      <div className="text-green-400">$ Project workspace ready...</div>
+                      <div className="text-green-400 font-mono">
+                        <span className="text-blue-400">C:\Users\Softvibe\Workspace></span> softvibe --init workspace.sh<br/>
+                        $ Project workspace ready...
+                      </div>
                     )}
                  </div>
               </div>
