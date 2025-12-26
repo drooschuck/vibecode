@@ -441,7 +441,7 @@ export default function App() {
                    <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
                  ) : (
                    <div className="text-gray-600 font-mono">
-                     <span className="text-blue-400">C:\Users\Softvibe\Learner></span> Ready to execute. Click "Run Code" to start...
+                     <span className="text-blue-400">C:\Users\Softvibe\Learner&gt;</span> Ready to execute. Click "Run Code" to start...
                    </div>
                  )}
               </div>
@@ -555,8 +555,8 @@ export default function App() {
                       <pre className="text-gray-300 whitespace-pre-wrap">{output}</pre>
                     ) : (
                       <div className="text-green-400 font-mono">
-                        <span className="text-blue-400">C:\Users\Softvibe\Workspace></span> softvibe --init workspace.sh<br/>
-                        $ Project workspace ready...
+                        <span className="text-blue-400">C:\Users\Softvibe\Workspace&gt;</span> softvibe --init workspace.sh<br/>
+                        {"$"} Project workspace ready...
                       </div>
                     )}
                  </div>
