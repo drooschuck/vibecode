@@ -7,7 +7,7 @@ const LANGUAGE_IDS: Record<string, number> = {
   'c': 50       // C (GCC 9.2.0)
 };
 
-export const executeInSandbox = async (code: string, language: string): Promise<string> => {
+export const executeInSandbox = async (code: string, language: string, stdin: string = ''): Promise<string> => {
   const langId = LANGUAGE_IDS[language.toLowerCase()];
   
   if (!langId) {
@@ -16,7 +16,6 @@ export const executeInSandbox = async (code: string, language: string): Promise<
 
   try {
     // We use wait=true for synchronous-like behavior in the simple UI
-    // For production with long tasks, we would poll the submission token
     const response = await fetch(`${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`, {
       method: 'POST',
       headers: {
@@ -25,7 +24,7 @@ export const executeInSandbox = async (code: string, language: string): Promise<
       body: JSON.stringify({
         source_code: btoa(unescape(encodeURIComponent(code))),
         language_id: langId,
-        stdin: btoa(''),
+        stdin: btoa(unescape(encodeURIComponent(stdin))),
       }),
     });
 

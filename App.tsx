@@ -24,7 +24,8 @@ import {
   Key,
   Sun,
   Moon,
-  ShieldCheck
+  ShieldCheck,
+  Keyboard
 } from 'lucide-react';
 import { COURSES, PROJECTS, INITIAL_PROGRESS } from './constants';
 import { Course, Lesson, UserProgress, Project } from './types';
@@ -97,7 +98,7 @@ const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void; prog
 export default function App() {
   const [view, setView] = useState<'dashboard' | 'course' | 'project_list' | 'project_detail'>('dashboard');
   
-  // Persistence: Initialize state from local storage
+  // Persistence
   const [userProgress, setUserProgress] = useState<UserProgress>(() => {
     try {
       const saved = localStorage.getItem('softvibe_progress');
@@ -107,14 +108,12 @@ export default function App() {
     }
   });
 
-  // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const savedTheme = localStorage.getItem('softvibe_theme');
     if (savedTheme) return savedTheme === 'dark';
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  // Sync Dark Mode with Document
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -125,7 +124,6 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Offline Detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [hasApiKey, setHasApiKey] = useState(true);
 
@@ -139,7 +137,6 @@ export default function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial API Key check
     const checkApiKey = async () => {
       // @ts-ignore
       if (window.aistudio && window.aistudio.hasSelectedApiKey) {
@@ -156,22 +153,21 @@ export default function App() {
     };
   }, []);
 
-  // Application State
+  // State
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   
   const [code, setCode] = useState('');
+  const [stdin, setStdin] = useState(''); // Added STDIN state
   const [output, setOutput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [terminalTab, setTerminalTab] = useState<'output' | 'input'>('output');
 
-  // Filters
   const [langFilter, setLangFilter] = useState('All');
   const [difficultyFilter, setDifficultyFilter] = useState('All');
-
-  // --- Handlers ---
 
   const handleConnectKey = async () => {
     // @ts-ignore
@@ -186,9 +182,9 @@ export default function App() {
     setActiveCourse(course);
     const firstUnfinishedIndex = course.lessons.findIndex(l => !userProgress.completedLessonIds.includes(l.id));
     const startIndex = firstUnfinishedIndex >= 0 ? firstUnfinishedIndex : 0;
-    
     setActiveLessonIndex(startIndex);
     setCode(course.lessons[startIndex].initialCode);
+    setStdin('');
     setOutput('');
     setAiFeedback(null);
     setView('course');
@@ -198,6 +194,7 @@ export default function App() {
     setActiveProject(project);
     const savedCode = localStorage.getItem(`softvibe_draft_${project.id}`);
     setCode(savedCode || project.starterCode);
+    setStdin('');
     setOutput('');
     setAiFeedback(null);
     setView('project_detail');
@@ -210,12 +207,13 @@ export default function App() {
     }
     
     setIsExecuting(true);
-    setOutput("Sending code to Judge0 sandbox...");
+    setOutput("Preparing environment...");
+    setTerminalTab('output');
     
     const lang = activeCourse ? activeCourse.language : activeProject ? activeProject.language : 'Python';
     
     try {
-      const result = await executeInSandbox(code, lang);
+      const result = await executeInSandbox(code, lang, stdin);
       setOutput(result);
     } catch (err: any) {
       setOutput(`Execution Error: ${err.message || "Failed to reach sandbox engine."}`);
@@ -228,7 +226,6 @@ export default function App() {
     if (!isOnline) return;
     setIsAiLoading(true);
     setAiFeedback(null);
-    
     try {
       const feedback = await askAiTutor(code, context, lang);
       setAiFeedback(feedback);
@@ -242,7 +239,6 @@ export default function App() {
   const handleCompleteLesson = () => {
     if (!activeCourse) return;
     const currentLessonId = activeCourse.lessons[activeLessonIndex].id;
-    
     if (!userProgress.completedLessonIds.includes(currentLessonId)) {
       setUserProgress(prev => ({
         ...prev,
@@ -250,10 +246,10 @@ export default function App() {
         hoursLearned: prev.hoursLearned + 0.5
       }));
     }
-
     if (activeLessonIndex < activeCourse.lessons.length - 1) {
       setActiveLessonIndex(prev => prev + 1);
       setCode(activeCourse.lessons[activeLessonIndex + 1].initialCode);
+      setStdin('');
       setOutput('');
       setAiFeedback(null);
     } else {
@@ -280,60 +276,63 @@ export default function App() {
     setTimeout(() => setView('project_list'), 500);
   };
 
-  // --- Views ---
-
   const renderThemeToggle = () => (
     <button 
       onClick={() => setIsDarkMode(!isDarkMode)}
       className="p-2.5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition-all shadow-sm flex items-center justify-center group"
-      aria-label="Toggle dark mode"
     >
-      {isDarkMode ? (
-        <Sun size={20} className="group-hover:rotate-12 transition-transform duration-300" />
-      ) : (
-        <Moon size={20} className="group-hover:-rotate-12 transition-transform duration-300" />
-      )}
+      {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
     </button>
   );
 
-  const renderOfflineBanner = () => (
-    !isOnline && (
-      <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 animate-pulse sticky top-0 z-50 shadow-md">
-        <WifiOff size={16} /> You are currently offline. Progress will be saved locally.
-      </div>
-    )
-  );
-
-  const renderApiKeyWarning = () => (
-    !hasApiKey && isOnline && (
-      <div className="bg-blue-600 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-4 sticky top-0 z-50 shadow-md">
-        <div className="flex items-center gap-2">
-          <Key size={16} /> API Key required for Gemini 3 features.
+  const renderTerminal = () => (
+    <div className="h-full flex flex-col">
+      <div className="bg-[#1e1e1e] border-b border-gray-800 px-2 flex items-center justify-between text-[10px] text-gray-400 font-mono uppercase tracking-wider">
+        <div className="flex">
+          <button 
+            onClick={() => setTerminalTab('output')}
+            className={`px-4 py-2 border-b-2 transition-colors flex items-center gap-2 ${terminalTab === 'output' ? 'border-blue-500 text-white bg-gray-800/50' : 'border-transparent hover:text-gray-200'}`}
+          >
+            <Terminal size={12} /> Output
+          </button>
+          <button 
+            onClick={() => setTerminalTab('input')}
+            className={`px-4 py-2 border-b-2 transition-colors flex items-center gap-2 ${terminalTab === 'input' ? 'border-blue-500 text-white bg-gray-800/50' : 'border-transparent hover:text-gray-200'}`}
+          >
+            <Keyboard size={12} /> Standard Input (STDIN)
+          </button>
         </div>
-        <button 
-          onClick={handleConnectKey}
-          className="bg-white text-blue-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-50 transition-colors"
-        >
-          Connect Project
-        </button>
+        <div className="px-4 py-2 text-gray-600">Judge0 CE Sandbox</div>
       </div>
-    )
+      
+      <div className="flex-1 bg-[#151515] overflow-hidden relative">
+        {terminalTab === 'output' ? (
+          <div className="p-4 h-full overflow-auto font-mono text-sm">
+            {output ? (
+              <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
+            ) : (
+              <div className="text-gray-600">
+                <span className="text-blue-400">softvibe@sandbox:~$</span> Run your code to see the results here.
+              </div>
+            )}
+          </div>
+        ) : (
+          <textarea
+            value={stdin}
+            onChange={(e) => setStdin(e.target.value)}
+            className="w-full h-full bg-transparent p-4 font-mono text-sm text-blue-300 outline-none resize-none placeholder-gray-700"
+            placeholder="# Type data for input() here...&#10;# One line per input prompt.&#10;# Example:&#10;John&#10;25"
+          />
+        )}
+      </div>
+    </div>
   );
 
   const renderDashboard = () => (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-      {/* Top Nav / Theme Toggle */}
-      <div className="flex justify-end mb-8">
-        {renderThemeToggle()}
-      </div>
-
-      {/* Header */}
+      <div className="flex justify-end mb-8">{renderThemeToggle()}</div>
       <div className="text-center mb-16">
         <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 px-4 py-2 rounded-full shadow-sm text-sm font-semibold text-blue-600 dark:text-blue-400 mb-6 border border-blue-100 dark:border-blue-800">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-          </span>
           Welcome to softvibe
         </div>
         <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 dark:text-slate-50 mb-6 tracking-tight">
@@ -344,16 +343,12 @@ export default function App() {
           Learn Python, Java, and C with interactive lessons, hands-on practice, and real-world projects powered by Gemini 3 Pro and Judge0 Sandbox.
         </p>
       </div>
-
-      {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
         <StatCard title="Hours Learned" value={userProgress.hoursLearned.toFixed(1)} icon={<Clock size={28} className="text-white opacity-80" />} colorClass="bg-sky-400 dark:bg-sky-500" />
         <StatCard title="Lessons Completed" value={userProgress.completedLessonIds.length} icon={<Code size={28} className="text-white opacity-80" />} colorClass="bg-emerald-400 dark:bg-emerald-500" />
         <StatCard title="Current Streak" value={`${userProgress.streakDays} days`} icon={<Flame size={28} className="text-white opacity-80" />} colorClass="bg-amber-400 dark:bg-amber-500" />
         <StatCard title="Projects Built" value={userProgress.completedProjectIds.length} icon={<Trophy size={28} className="text-white opacity-80" />} colorClass="bg-purple-400 dark:bg-purple-500" />
       </div>
-
-      {/* Course Selection */}
       <div className="mb-20">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-8 flex items-center gap-3">
           <BookOpen className="text-blue-600 dark:text-blue-400" /> Choose Your Path
@@ -362,27 +357,9 @@ export default function App() {
           {COURSES.map(course => {
             const completedLessons = course.lessons.filter(l => userProgress.completedLessonIds.includes(l.id)).length;
             const progress = Math.round((completedLessons / course.lessons.length) * 100);
-            return (
-              <CourseCard key={course.id} course={course} onSelect={handleStartCourse} progress={progress} />
-            );
+            return <CourseCard key={course.id} course={course} onSelect={handleStartCourse} progress={progress} />;
           })}
         </div>
-      </div>
-      
-      {/* Lab CTA */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 md:p-12 text-center shadow-lg border border-gray-100 dark:border-slate-800 relative overflow-hidden mb-12">
-         <div className="relative z-10 max-w-3xl mx-auto">
-           <div className="flex justify-center mb-6">
-              <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-2xl">
-                <ShieldCheck className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
-              </div>
-           </div>
-           <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-4">Sandboxed Code Sandbox</h2>
-           <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-xl mx-auto">Build real projects using our Judge0-powered secure execution engine. Test your code against real compilers.</p>
-           <button onClick={() => setView('project_list')} className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-blue-900/40">
-             <Layout size={20} /> Open Practice Lab
-           </button>
-         </div>
       </div>
     </div>
   );
@@ -393,7 +370,7 @@ export default function App() {
     const context = currentLesson.content.replace(/<[^>]*>?/gm, '');
 
     return (
-      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
         <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-4">
             <button onClick={() => setView('dashboard')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
@@ -411,18 +388,14 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
-                <ShieldCheck size={14} className="text-indigo-500" />
-                <span>Judge0 Sandbox Ready</span>
-             </div>
              {renderThemeToggle()}
              <button 
                 onClick={handleRunCode}
                 disabled={isExecuting || !isOnline}
-                className={`bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
+                className={`bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait scale-95' : 'hover:scale-105 active:scale-95'}`}
              >
                 {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} 
-                {isExecuting ? 'Executing...' : 'Run Code'}
+                {isExecuting ? 'Running...' : 'Run Code'}
              </button>
           </div>
         </header>
@@ -433,62 +406,34 @@ export default function App() {
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-6">{currentLesson.title}</h1>
                 <div dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
              </div>
-
              {aiFeedback && (
-               <div className={`mt-8 p-4 border rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${aiFeedback.startsWith("Error") ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30 text-red-800 dark:text-red-300' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30 text-indigo-900 dark:text-indigo-300'}`}>
-                  <h4 className="flex items-center gap-2 font-bold text-sm mb-2">
-                    <MessageSquare size={16} /> AI Tutor Feedback
+               <div className="mt-8 p-4 border rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30">
+                  <h4 className="flex items-center gap-2 font-bold text-sm mb-2 text-indigo-900 dark:text-indigo-300">
+                    <MessageSquare size={16} /> Tutor Feedback
                   </h4>
-                  <div className="prose prose-sm dark:prose-invert leading-relaxed">
-                    <ReactMarkdown>{aiFeedback}</ReactMarkdown>
-                  </div>
+                  <div className="prose prose-sm dark:prose-invert leading-relaxed"><ReactMarkdown>{aiFeedback}</ReactMarkdown></div>
                </div>
              )}
-             
              <div className="mt-8 space-y-3">
                 <button 
                   onClick={() => handleAskAi(context, activeCourse.language)}
-                  disabled={isAiLoading || !isOnline}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 transition-colors font-semibold ${isAiLoading || !isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all font-semibold"
                 >
-                   {isAiLoading ? 'Gemini is Thinking...' : isOnline ? 'Get AI Help' : 'AI Unavailable (Offline)'} <MessageSquare size={18} />
+                   {isAiLoading ? 'Thinking...' : 'Get AI Help'} <MessageSquare size={18} />
                 </button>
-
-                <button 
-                  onClick={() => {
-                    if (window.confirm("This will replace your current code with the solution. Are you sure?")) {
-                      setCode(currentLesson.solutionCode);
-                    }
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm font-medium"
-                >
+                <button onClick={() => setCode(currentLesson.solutionCode)} className="w-full py-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors text-sm font-medium flex items-center justify-center gap-2">
                    <Eye size={16} /> Reveal Solution Code
                 </button>
              </div>
           </div>
 
           <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-            <div className="h-[65%] flex flex-col border-b border-gray-800 relative">
-               <div className="flex-1 overflow-hidden">
-                  <CodeEditor code={code} onChange={setCode} language={activeCourse.language} isDarkMode={isDarkMode} />
-               </div>
+            <div className="h-[65%] flex flex-col border-b border-gray-800 relative overflow-hidden">
+               <CodeEditor code={code} onChange={setCode} language={activeCourse.language} isDarkMode={isDarkMode} />
             </div>
-            
             <div className="h-[35%] flex flex-col">
-              <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider">
-                 <div className="flex items-center"><Terminal size={14} className="mr-2" /> Real-time Execution Output</div>
-              </div>
-              <div className="flex-1 bg-[#151515] p-4 overflow-auto font-mono text-sm">
-                 {output ? (
-                   <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
-                 ) : (
-                   <div className="text-gray-600 font-mono">
-                     <span className="text-blue-400">C:\\Sandbox\\&gt;</span> Connected to Judge0. Click "Run Code" to execute.
-                   </div>
-                 )}
-              </div>
-              
-              <div className="bg-gray-900 border-t border-gray-800 p-3 flex justify-end items-center">
+              {renderTerminal()}
+              <div className="bg-gray-900 border-t border-gray-800 p-3 flex justify-end items-center shrink-0">
                  <button onClick={handleCompleteLesson} className="bg-white text-black px-6 py-2 rounded-lg font-bold hover:bg-gray-100 transition-colors flex items-center gap-2 text-sm">
                    {activeLessonIndex < activeCourse.lessons.length - 1 ? 'Next Lesson' : 'Finish Course'} <ChevronRight size={18} />
                  </button>
@@ -502,95 +447,35 @@ export default function App() {
 
   const renderProjectDetail = () => {
     if (!activeProject) return null;
-    const isCompleted = userProgress.completedProjectIds.includes(activeProject.id);
-
     return (
-      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
         <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-4">
             <button onClick={() => setView('project_list')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
               <ArrowLeft size={20} />
             </button>
-            <div>
-               <h2 className="font-bold text-gray-900 dark:text-slate-50 flex items-center gap-2">
-                 <Layers size={20} className="text-blue-600 dark:text-blue-400"/> {activeProject.title}
-               </h2>
-               <div className="flex gap-2 mt-1">
-                 <span className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-gray-600 dark:text-slate-400">{activeProject.language}</span>
-                 <span className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-gray-600 dark:text-slate-400">{activeProject.difficulty}</span>
-               </div>
-            </div>
+            <h2 className="font-bold text-gray-900 dark:text-slate-50">{activeProject.title}</h2>
           </div>
-          <div className="flex gap-3 items-center">
-             {renderThemeToggle()}
-             <button 
-                onClick={handleRunCode}
-                disabled={isExecuting || !isOnline}
-                className={`bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
-             >
-                {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} Run in Sandbox
+          <div className="flex gap-3">
+             <button onClick={handleRunCode} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2">
+                <Play size={16} /> Run Code
              </button>
-             <button onClick={handleSaveProjectDraft} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 flex items-center gap-2">
-               <Save size={16} /> Save Draft
-             </button>
-             <button onClick={handleSubmitProject} className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-all ${isCompleted ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/40' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                {isCompleted ? <><Check size={16}/> Completed</> : <><CheckCircle size={16}/> Submit Project</>}
-             </button>
+             <button onClick={handleSaveProjectDraft} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-400 flex items-center gap-2"><Save size={16} /> Save</button>
+             <button onClick={handleSubmitProject} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"><CheckCircle size={16} /> Submit</button>
           </div>
         </header>
-
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
            <div className="w-full md:w-1/3 p-6 overflow-y-auto border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 mb-4">Requirements</h3>
+              <h3 className="text-lg font-bold mb-4">Description</h3>
               <p className="text-slate-600 dark:text-slate-300 leading-relaxed mb-6">{activeProject.description}</p>
-              
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 mb-6">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Security Notice</h4>
-                <div className="flex items-start gap-3 text-xs text-slate-500 dark:text-slate-400">
-                  <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
-                  <p>Your code is executed in a Judge0 Docker container. Network access is restricted and the session is isolated for your safety.</p>
-                </div>
+              <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-xs flex gap-3">
+                <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
+                <p>Sandboxed isolated execution enabled.</p>
               </div>
-
-              {aiFeedback && (
-               <div className={`mt-4 p-4 border rounded-xl shadow-sm ${aiFeedback.startsWith("Error") ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30 text-red-800 dark:text-red-300' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30 text-indigo-900 dark:text-indigo-300'}`}>
-                  <h4 className="flex items-center gap-2 font-bold text-sm mb-2">
-                    <MessageSquare size={16} /> AI Assistant
-                  </h4>
-                  <div className="prose prose-sm dark:prose-invert leading-relaxed">
-                    <ReactMarkdown>{aiFeedback}</ReactMarkdown>
-                  </div>
-               </div>
-              )}
-
-              <button 
-                  onClick={() => handleAskAi(activeProject.description, activeProject.language)}
-                  disabled={isAiLoading || !isOnline}
-                  className={`w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors font-medium text-sm ${isAiLoading || !isOnline ? 'opacity-50' : ''}`}
-              >
-                  {isAiLoading ? 'Analyzing Project...' : 'Ask for a Hint'}
-              </button>
            </div>
-
            <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-              <div className="h-[65%] overflow-hidden border-b border-gray-800">
-                <CodeEditor code={code} onChange={setCode} language={activeProject.language} isDarkMode={isDarkMode} />
-              </div>
-              <div className="h-[35%] bg-[#151515] flex flex-col">
-                 <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center text-xs text-gray-400 font-mono uppercase tracking-wider">
-                     <Terminal size={14} className="mr-2" /> Project Sandbox Console
-                 </div>
-                 <div className="flex-1 p-4 overflow-auto font-mono text-sm">
-                    {output ? (
-                      <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
-                    ) : (
-                      <div className="text-emerald-400 font-mono">
-                        <span className="text-blue-400">C:\\Workspace\\&gt;</span> judge0 --init environment<br/>
-                        {"$"} Isolated container ready. Write code and click "Run".
-                      </div>
-                    )}
-                 </div>
-              </div>
+              <div className="h-[65%] overflow-hidden border-b border-gray-800"><CodeEditor code={code} onChange={setCode} language={activeProject.language} isDarkMode={isDarkMode} /></div>
+              <div className="h-[35%]">{renderTerminal()}</div>
            </div>
         </div>
       </div>
@@ -598,91 +483,31 @@ export default function App() {
   };
 
   const renderProjectList = () => {
-    const filteredProjects = PROJECTS.filter(p => {
-      const matchLang = langFilter === 'All' || p.language === langFilter;
-      const matchDiff = difficultyFilter === 'All' || p.difficulty === difficultyFilter;
-      return matchLang && matchDiff;
-    });
-
+    const filteredProjects = PROJECTS.filter(p => (langFilter === 'All' || p.language === langFilter) && (difficultyFilter === 'All' || p.difficulty === difficultyFilter));
     return (
       <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in">
-         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-           <div className="flex items-center gap-4">
-             <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm rounded-full transition-all">
-                <ArrowLeft size={24} className="text-slate-600 dark:text-slate-400" />
-             </button>
-             <div>
-               <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Practice Lab</h1>
-               <p className="text-slate-500 dark:text-slate-400 mt-1">Real-world challenges to test your skills</p>
-             </div>
-           </div>
-           
-           <div className="flex gap-3 items-center">
-             {renderThemeToggle()}
-             <div className="relative">
-               <select className="appearance-none bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={langFilter} onChange={(e) => setLangFilter(e.target.value)}>
-                 <option value="All">All Languages</option>
-                 <option value="Python">Python</option>
-                 <option value="Java">Java</option>
-                 <option value="C">C</option>
-               </select>
-               <Filter size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-             </div>
-             <div className="relative">
-               <select className="appearance-none bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={difficultyFilter} onChange={(e) => setDifficultyFilter(e.target.value)}>
-                 <option value="All">All Levels</option>
-                 <option value="Beginner">Beginner</option>
-                 <option value="Intermediate">Intermediate</option>
-                 <option value="Advanced">Advanced</option>
-               </select>
-               <div className="absolute right-3 top-3 text-gray-400 pointer-events-none">▼</div>
-             </div>
-           </div>
+         <div className="flex items-center gap-4 mb-10">
+           <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-full transition-all"><ArrowLeft size={24} /></button>
+           <h1 className="text-3xl font-bold">Practice Lab</h1>
          </div>
-         
          <div className="grid gap-6">
-            {filteredProjects.length === 0 ? (
-              <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-gray-300 dark:border-slate-700">
-                <p className="text-gray-500 dark:text-slate-400">No projects found matching your filters.</p>
+            {filteredProjects.map(project => (
+              <div key={project.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex justify-between items-center group hover:shadow-lg transition-all">
+                <div>
+                   <h3 className="font-bold text-lg mb-1">{project.title}</h3>
+                   <p className="text-slate-500 dark:text-slate-400 text-sm">{project.description}</p>
+                </div>
+                <button onClick={() => handleStartProject(project)} className="bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2">Start <ChevronRight size={16} /></button>
               </div>
-            ) : (
-              filteredProjects.map(project => {
-                const isDone = userProgress.completedProjectIds.includes(project.id);
-                return (
-                 <div key={project.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-lg transition-shadow group">
-                    <div className="flex gap-5 w-full md:w-auto">
-                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0 transition-colors ${project.language === 'Python' ? 'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/50' : project.language === 'Java' ? 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 group-hover:bg-orange-100 dark:group-hover:bg-orange-900/50' : 'bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 group-hover:bg-violet-100 dark:group-hover:bg-violet-900/50'}`}>
-                          {project.language === 'Python' ? '🐍' : project.language === 'Java' ? '☕' : '⚡'}
-                       </div>
-                       <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                             <h3 className="font-bold text-lg text-slate-900 dark:text-slate-50">{project.title}</h3>
-                             {isDone && <CheckCircle size={16} className="text-green-500 fill-green-100 dark:fill-green-900/20" />}
-                          </div>
-                          <p className="text-slate-500 dark:text-slate-400 text-sm mb-3 line-clamp-2 md:line-clamp-1 max-w-xl">{project.description}</p>
-                          <div className="flex gap-2">
-                            <span className="px-2.5 py-1 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-slate-400 text-xs rounded-md font-medium border border-gray-100 dark:border-slate-700">{project.language}</span>
-                            <span className={`px-2.5 py-1 text-xs rounded-md font-medium border ${project.difficulty === 'Beginner' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-900/30' : project.difficulty === 'Intermediate' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-100 dark:border-yellow-900/30' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-100 dark:border-red-900/30'}`}>
-                               {project.difficulty}
-                            </span>
-                          </div>
-                       </div>
-                    </div>
-                    <button onClick={() => handleStartProject(project)} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold rounded-xl hover:bg-slate-800 dark:hover:bg-white transition-colors whitespace-nowrap shadow-md shadow-slate-200 dark:shadow-none flex items-center justify-center gap-2">
-                       {isDone ? 'Review Code' : 'Start Project'} <ChevronRight size={16} />
-                    </button>
-                 </div>
-              )})
-            )}
+            ))}
          </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300">
-      {renderOfflineBanner()}
-      {renderApiKeyWarning()}
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300 overflow-x-hidden">
+      {!isOnline && <div className="bg-amber-500 text-white text-center py-2 text-sm font-medium sticky top-0 z-[60] flex items-center justify-center gap-2"><WifiOff size={16} /> Working Offline</div>}
       {view === 'dashboard' && renderDashboard()}
       {view === 'course' && renderCourseView()}
       {view === 'project_list' && renderProjectList()}
