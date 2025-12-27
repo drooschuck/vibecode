@@ -483,7 +483,7 @@ export default function App() {
                    <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
                  ) : (
                    <div className="text-gray-600 font-mono">
-                     <span className="text-blue-400">C:\Sandbox\&gt;</span> Connected to Judge0. Click "Run Code" to execute.
+                     <span className="text-blue-400">C:\\Sandbox\\&gt;</span> Connected to Judge0. Click "Run Code" to execute.
                    </div>
                  )}
               </div>
@@ -585,7 +585,7 @@ export default function App() {
                       <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
                     ) : (
                       <div className="text-emerald-400 font-mono">
-                        <span className="text-blue-400">C:\Workspace\&gt;</span> judge0 --init environment<br/>
+                        <span className="text-blue-400">C:\\Workspace\\&gt;</span> judge0 --init environment<br/>
                         {"$"} Isolated container ready. Write code and click "Run".
                       </div>
                     )}

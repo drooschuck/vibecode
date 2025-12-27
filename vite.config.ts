@@ -8,6 +8,20 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY)
+    },
+    build: {
+      rollupOptions: {
+        external: [
+          'react',
+          'react-dom',
+          'react-dom/client',
+          '@google/genai',
+          'react-markdown',
+          'recharts',
+          'lucide-react',
+          '@monaco-editor/react'
+        ]
+      }
     }
   };
 });
