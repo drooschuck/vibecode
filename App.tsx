@@ -21,13 +21,16 @@ import {
   Eye,
   Terminal,
   RotateCcw,
-  Key
+  Key,
+  Sun,
+  Moon,
+  ShieldCheck
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { COURSES, PROJECTS, INITIAL_PROGRESS } from './constants';
 import { Course, Lesson, UserProgress, Project } from './types';
 import { CodeEditor } from './components/CodeEditor';
-import { askAiTutor, executeCode } from './services/geminiService';
+import { askAiTutor } from './services/geminiService';
+import { executeInSandbox } from './services/executionService';
 
 // --- Helper Components ---
 
@@ -46,7 +49,7 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 );
 
 const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void; progress: number }> = ({ course, onSelect, progress }) => (
-  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col h-full group overflow-hidden">
+  <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 hover:shadow-xl transition-all duration-300 flex flex-col h-full group overflow-hidden">
     <div className={`h-32 ${course.color} flex items-center justify-center relative`}>
         <div className="text-5xl transform group-hover:scale-110 transition-transform duration-300">
             {course.icon}
@@ -56,22 +59,22 @@ const CourseCard: React.FC<{ course: Course; onSelect: (c: Course) => void; prog
     
     <div className="p-6 flex-1 flex flex-col">
         <div className="mb-4">
-            <h3 className={`text-xl font-bold mb-1 text-slate-900 group-hover:text-blue-600 transition-colors`}>
+            <h3 className={`text-xl font-bold mb-1 text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors`}>
                 {course.title}
             </h3>
-            <p className="text-sm text-gray-500 font-medium">{course.level}</p>
+            <p className="text-sm text-gray-500 font-medium dark:text-slate-400">{course.level}</p>
         </div>
         
-        <p className="text-gray-600 text-sm mb-6 flex-grow leading-relaxed">
+        <p className="text-gray-600 dark:text-slate-300 text-sm mb-6 flex-grow leading-relaxed">
             {course.description}
         </p>
         
         <div className="mt-auto">
-            <div className="flex justify-between text-xs text-gray-500 mb-2 font-medium">
+            <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">
                 <span>Progress</span>
                 <span>{progress}%</span>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-2 mb-6">
+            <div className="w-full bg-gray-100 dark:bg-slate-800 rounded-full h-2 mb-6">
                 <div 
                     className={`h-2 rounded-full ${course.color}`} 
                     style={{ width: `${progress}%` }}
@@ -103,6 +106,24 @@ export default function App() {
       return INITIAL_PROGRESS;
     }
   });
+
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const savedTheme = localStorage.getItem('softvibe_theme');
+    if (savedTheme) return savedTheme === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  // Sync Dark Mode with Document
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('softvibe_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('softvibe_theme', 'light');
+    }
+  }, [isDarkMode]);
 
   // Offline Detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -161,20 +182,6 @@ export default function App() {
     }
   };
 
-  const handleError = async (err: any, type: 'tutor' | 'execution') => {
-    const msg = err?.message || '';
-    if (msg.includes("Requested entity was not found")) {
-      const errorMsg = "API configuration error. Please ensure you've selected a valid project with Gemini API enabled.";
-      if (type === 'tutor') setAiFeedback(errorMsg);
-      else setOutput("Error: " + errorMsg);
-      await handleConnectKey();
-    } else {
-      const genericMsg = "Connection error. Please check your internet and API key selection.";
-      if (type === 'tutor') setAiFeedback(genericMsg);
-      else setOutput("Error: " + genericMsg);
-    }
-  };
-
   const handleStartCourse = (course: Course) => {
     setActiveCourse(course);
     const firstUnfinishedIndex = course.lessons.findIndex(l => !userProgress.completedLessonIds.includes(l.id));
@@ -198,20 +205,20 @@ export default function App() {
 
   const handleRunCode = async () => {
     if (!isOnline) {
-      setOutput("Error: Internet connection required for cloud execution.");
+      setOutput("Error: Internet connection required for cloud sandbox execution.");
       return;
     }
     
     setIsExecuting(true);
-    setOutput("Preparing environment and executing...");
+    setOutput("Sending code to Judge0 sandbox...");
     
     const lang = activeCourse ? activeCourse.language : activeProject ? activeProject.language : 'Python';
     
     try {
-      const result = await executeCode(code, lang);
-      setOutput(result || "(Process finished with no output)");
-    } catch (err) {
-      handleError(err, 'execution');
+      const result = await executeInSandbox(code, lang);
+      setOutput(result);
+    } catch (err: any) {
+      setOutput(`Execution Error: ${err.message || "Failed to reach sandbox engine."}`);
     } finally {
       setIsExecuting(false);
     }
@@ -225,8 +232,8 @@ export default function App() {
     try {
       const feedback = await askAiTutor(code, context, lang);
       setAiFeedback(feedback);
-    } catch (err) {
-      handleError(err, 'tutor');
+    } catch (err: any) {
+      setAiFeedback(`Tutor error: ${err.message}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -275,6 +282,20 @@ export default function App() {
 
   // --- Views ---
 
+  const renderThemeToggle = () => (
+    <button 
+      onClick={() => setIsDarkMode(!isDarkMode)}
+      className="p-2.5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition-all shadow-sm flex items-center justify-center group"
+      aria-label="Toggle dark mode"
+    >
+      {isDarkMode ? (
+        <Sun size={20} className="group-hover:rotate-12 transition-transform duration-300" />
+      ) : (
+        <Moon size={20} className="group-hover:-rotate-12 transition-transform duration-300" />
+      )}
+    </button>
+  );
+
   const renderOfflineBanner = () => (
     !isOnline && (
       <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 animate-pulse sticky top-0 z-50 shadow-md">
@@ -301,36 +322,41 @@ export default function App() {
 
   const renderDashboard = () => (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+      {/* Top Nav / Theme Toggle */}
+      <div className="flex justify-end mb-8">
+        {renderThemeToggle()}
+      </div>
+
       {/* Header */}
       <div className="text-center mb-16">
-        <div className="inline-flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-full shadow-sm text-sm font-semibold text-blue-600 mb-6 border border-blue-100">
+        <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 px-4 py-2 rounded-full shadow-sm text-sm font-semibold text-blue-600 dark:text-blue-400 mb-6 border border-blue-100 dark:border-blue-800">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
           </span>
           Welcome to softvibe
         </div>
-        <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 mb-6 tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 dark:text-slate-50 mb-6 tracking-tight">
           Master Programming<br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">One Language at a Time</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">One Language at a Time</span>
         </h1>
-        <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Learn Python, Java, and C with interactive lessons, hands-on practice, and real-world projects powered by Gemini 3 Pro.
+        <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          Learn Python, Java, and C with interactive lessons, hands-on practice, and real-world projects powered by Gemini 3 Pro and Judge0 Sandbox.
         </p>
       </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-        <StatCard title="Hours Learned" value={userProgress.hoursLearned.toFixed(1)} icon={<Clock size={28} className="text-white opacity-80" />} colorClass="bg-sky-400" />
-        <StatCard title="Lessons Completed" value={userProgress.completedLessonIds.length} icon={<Code size={28} className="text-white opacity-80" />} colorClass="bg-emerald-400" />
-        <StatCard title="Current Streak" value={`${userProgress.streakDays} days`} icon={<Flame size={28} className="text-white opacity-80" />} colorClass="bg-amber-400" />
-        <StatCard title="Projects Built" value={userProgress.completedProjectIds.length} icon={<Trophy size={28} className="text-white opacity-80" />} colorClass="bg-purple-400" />
+        <StatCard title="Hours Learned" value={userProgress.hoursLearned.toFixed(1)} icon={<Clock size={28} className="text-white opacity-80" />} colorClass="bg-sky-400 dark:bg-sky-500" />
+        <StatCard title="Lessons Completed" value={userProgress.completedLessonIds.length} icon={<Code size={28} className="text-white opacity-80" />} colorClass="bg-emerald-400 dark:bg-emerald-500" />
+        <StatCard title="Current Streak" value={`${userProgress.streakDays} days`} icon={<Flame size={28} className="text-white opacity-80" />} colorClass="bg-amber-400 dark:bg-amber-500" />
+        <StatCard title="Projects Built" value={userProgress.completedProjectIds.length} icon={<Trophy size={28} className="text-white opacity-80" />} colorClass="bg-purple-400 dark:bg-purple-500" />
       </div>
 
       {/* Course Selection */}
       <div className="mb-20">
-        <h2 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-3">
-          <BookOpen className="text-blue-600" /> Choose Your Path
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-8 flex items-center gap-3">
+          <BookOpen className="text-blue-600 dark:text-blue-400" /> Choose Your Path
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {COURSES.map(course => {
@@ -344,16 +370,16 @@ export default function App() {
       </div>
       
       {/* Lab CTA */}
-      <div className="bg-white rounded-3xl p-8 md:p-12 text-center shadow-lg border border-gray-100 relative overflow-hidden mb-12">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 md:p-12 text-center shadow-lg border border-gray-100 dark:border-slate-800 relative overflow-hidden mb-12">
          <div className="relative z-10 max-w-3xl mx-auto">
            <div className="flex justify-center mb-6">
-              <div className="bg-indigo-50 p-4 rounded-2xl">
-                <Code className="w-10 h-10 text-indigo-600" />
+              <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-2xl">
+                <ShieldCheck className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
               </div>
            </div>
-           <h2 className="text-3xl font-bold text-slate-900 mb-4">Ready to Start Coding?</h2>
-           <p className="text-slate-600 mb-8 max-w-xl mx-auto">Jump into our interactive practice lab and start experimenting with code right away.</p>
-           <button onClick={() => setView('project_list')} className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200">
+           <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-4">Sandboxed Code Sandbox</h2>
+           <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-xl mx-auto">Build real projects using our Judge0-powered secure execution engine. Test your code against real compilers.</p>
+           <button onClick={() => setView('project_list')} className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-blue-900/40">
              <Layout size={20} /> Open Practice Lab
            </button>
          </div>
@@ -367,52 +393,53 @@ export default function App() {
     const context = currentLesson.content.replace(/<[^>]*>?/gm, '');
 
     return (
-      <div className="flex flex-col h-screen bg-slate-50">
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
+      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950">
+        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-4">
-            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600">
+            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
               <ArrowLeft size={20} />
             </button>
             <div>
-               <h2 className="font-bold text-gray-900 flex items-center gap-2">
+               <h2 className="font-bold text-gray-900 dark:text-slate-50 flex items-center gap-2">
                  {activeCourse.icon} {activeCourse.title}
                </h2>
-               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                  <span className="font-medium text-blue-600">Lesson {activeLessonIndex + 1}</span>
-                  <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+               <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">Lesson {activeLessonIndex + 1}</span>
+                  <span className="w-1 h-1 bg-gray-300 dark:bg-slate-700 rounded-full"></span>
                   <span>{currentLesson.title}</span>
                </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1.5 rounded-full">
-                <div className={`w-2 h-2 rounded-full ${isOnline && hasApiKey ? 'bg-green-500' : 'bg-amber-400'}`}></div> 
-                {isOnline && hasApiKey ? 'Gemini 3 Pro Active' : isOnline ? 'Key Required' : 'Offline Mode'}
+             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
+                <ShieldCheck size={14} className="text-indigo-500" />
+                <span>Judge0 Sandbox Ready</span>
              </div>
+             {renderThemeToggle()}
              <button 
                 onClick={handleRunCode}
                 disabled={isExecuting || !isOnline}
                 className={`bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
              >
                 {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} 
-                {isExecuting ? 'Running...' : 'Run Code'}
+                {isExecuting ? 'Executing...' : 'Run Code'}
              </button>
           </div>
         </header>
 
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          <div className="w-full md:w-5/12 lg:w-1/3 p-6 overflow-y-auto border-r border-gray-200 bg-white">
-             <div className="prose prose-slate prose-sm max-w-none">
-                <h1 className="text-2xl font-bold text-slate-900 mb-6">{currentLesson.title}</h1>
+          <div className="w-full md:w-5/12 lg:w-1/3 p-6 overflow-y-auto border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+             <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-6">{currentLesson.title}</h1>
                 <div dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
              </div>
 
              {aiFeedback && (
-               <div className={`mt-8 p-4 border rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${aiFeedback.startsWith("Error") ? 'bg-red-50 border-red-100 text-red-800' : 'bg-indigo-50 border-indigo-100 text-indigo-900'}`}>
+               <div className={`mt-8 p-4 border rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2 ${aiFeedback.startsWith("Error") ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30 text-red-800 dark:text-red-300' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30 text-indigo-900 dark:text-indigo-300'}`}>
                   <h4 className="flex items-center gap-2 font-bold text-sm mb-2">
                     <MessageSquare size={16} /> AI Tutor Feedback
                   </h4>
-                  <div className="prose prose-sm leading-relaxed">
+                  <div className="prose prose-sm dark:prose-invert leading-relaxed">
                     <ReactMarkdown>{aiFeedback}</ReactMarkdown>
                   </div>
                </div>
@@ -422,16 +449,10 @@ export default function App() {
                 <button 
                   onClick={() => handleAskAi(context, activeCourse.language)}
                   disabled={isAiLoading || !isOnline}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 hover:border-indigo-300 transition-colors font-semibold ${isAiLoading || !isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 transition-colors font-semibold ${isAiLoading || !isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                    {isAiLoading ? 'Gemini is Thinking...' : isOnline ? 'Get AI Help' : 'AI Unavailable (Offline)'} <MessageSquare size={18} />
                 </button>
-
-                {!hasApiKey && isOnline && (
-                  <button onClick={handleConnectKey} className="w-full py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
-                    <Key size={14} /> Connect API Key
-                  </button>
-                )}
 
                 <button 
                   onClick={() => {
@@ -439,7 +460,7 @@ export default function App() {
                       setCode(currentLesson.solutionCode);
                     }
                   }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-slate-500 hover:text-blue-600 transition-colors text-sm font-medium"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm font-medium"
                 >
                    <Eye size={16} /> Reveal Solution Code
                 </button>
@@ -447,22 +468,22 @@ export default function App() {
           </div>
 
           <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-            <div className="h-[60%] flex flex-col border-b border-gray-800">
+            <div className="h-[65%] flex flex-col border-b border-gray-800 relative">
                <div className="flex-1 overflow-hidden">
-                  <CodeEditor code={code} onChange={setCode} language={activeCourse.language} />
+                  <CodeEditor code={code} onChange={setCode} language={activeCourse.language} isDarkMode={isDarkMode} />
                </div>
             </div>
             
-            <div className="h-[40%] flex flex-col">
-              <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center text-xs text-gray-400 font-mono uppercase tracking-wider">
-                 <Terminal size={14} className="mr-2" /> Terminal Output
+            <div className="h-[35%] flex flex-col">
+              <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider">
+                 <div className="flex items-center"><Terminal size={14} className="mr-2" /> Real-time Execution Output</div>
               </div>
               <div className="flex-1 bg-[#151515] p-4 overflow-auto font-mono text-sm">
                  {output ? (
-                   <pre className={`${output.startsWith("Error") ? 'text-red-400' : 'text-gray-300'} whitespace-pre-wrap`}>{output}</pre>
+                   <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
                  ) : (
                    <div className="text-gray-600 font-mono">
-                     <span className="text-blue-400">C:\Users\Softvibe\Learner&gt;</span> Ready. Click "Run Code" to simulate output...
+                     <span className="text-blue-400">C:\Sandbox\&gt;</span> Connected to Judge0. Click "Run Code" to execute.
                    </div>
                  )}
               </div>
@@ -484,50 +505,59 @@ export default function App() {
     const isCompleted = userProgress.completedProjectIds.includes(activeProject.id);
 
     return (
-      <div className="flex flex-col h-screen bg-slate-50">
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
+      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950">
+        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-4">
-            <button onClick={() => setView('project_list')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600">
+            <button onClick={() => setView('project_list')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
               <ArrowLeft size={20} />
             </button>
             <div>
-               <h2 className="font-bold text-gray-900 flex items-center gap-2">
-                 <Layers size={20} className="text-blue-600"/> {activeProject.title}
+               <h2 className="font-bold text-gray-900 dark:text-slate-50 flex items-center gap-2">
+                 <Layers size={20} className="text-blue-600 dark:text-blue-400"/> {activeProject.title}
                </h2>
                <div className="flex gap-2 mt-1">
-                 <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">{activeProject.language}</span>
-                 <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">{activeProject.difficulty}</span>
+                 <span className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-gray-600 dark:text-slate-400">{activeProject.language}</span>
+                 <span className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-gray-600 dark:text-slate-400">{activeProject.difficulty}</span>
                </div>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+             {renderThemeToggle()}
              <button 
                 onClick={handleRunCode}
                 disabled={isExecuting || !isOnline}
                 className={`bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm ${isExecuting ? 'opacity-70 cursor-wait' : ''}`}
              >
-                {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} Run
+                {isExecuting ? <RotateCcw className="animate-spin" size={16}/> : <Play size={16} />} Run in Sandbox
              </button>
-             <button onClick={handleSaveProjectDraft} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 flex items-center gap-2">
+             <button onClick={handleSaveProjectDraft} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 flex items-center gap-2">
                <Save size={16} /> Save Draft
              </button>
-             <button onClick={handleSubmitProject} className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-all ${isCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+             <button onClick={handleSubmitProject} className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-all ${isCompleted ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/40' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
                 {isCompleted ? <><Check size={16}/> Completed</> : <><CheckCircle size={16}/> Submit Project</>}
              </button>
           </div>
         </header>
 
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-           <div className="w-full md:w-1/3 p-6 overflow-y-auto border-r border-gray-200 bg-white">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Requirements</h3>
-              <p className="text-slate-600 leading-relaxed mb-6">{activeProject.description}</p>
+           <div className="w-full md:w-1/3 p-6 overflow-y-auto border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 mb-4">Requirements</h3>
+              <p className="text-slate-600 dark:text-slate-300 leading-relaxed mb-6">{activeProject.description}</p>
               
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 mb-6">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Security Notice</h4>
+                <div className="flex items-start gap-3 text-xs text-slate-500 dark:text-slate-400">
+                  <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
+                  <p>Your code is executed in a Judge0 Docker container. Network access is restricted and the session is isolated for your safety.</p>
+                </div>
+              </div>
+
               {aiFeedback && (
-               <div className={`mt-4 p-4 border rounded-xl shadow-sm ${aiFeedback.startsWith("Error") ? 'bg-red-50 border-red-100 text-red-800' : 'bg-indigo-50 border-indigo-100 text-indigo-900'}`}>
+               <div className={`mt-4 p-4 border rounded-xl shadow-sm ${aiFeedback.startsWith("Error") ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30 text-red-800 dark:text-red-300' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30 text-indigo-900 dark:text-indigo-300'}`}>
                   <h4 className="flex items-center gap-2 font-bold text-sm mb-2">
                     <MessageSquare size={16} /> AI Assistant
                   </h4>
-                  <div className="prose prose-sm leading-relaxed">
+                  <div className="prose prose-sm dark:prose-invert leading-relaxed">
                     <ReactMarkdown>{aiFeedback}</ReactMarkdown>
                   </div>
                </div>
@@ -536,27 +566,27 @@ export default function App() {
               <button 
                   onClick={() => handleAskAi(activeProject.description, activeProject.language)}
                   disabled={isAiLoading || !isOnline}
-                  className={`w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm ${isAiLoading || !isOnline ? 'opacity-50' : ''}`}
+                  className={`w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors font-medium text-sm ${isAiLoading || !isOnline ? 'opacity-50' : ''}`}
               >
                   {isAiLoading ? 'Analyzing Project...' : 'Ask for a Hint'}
               </button>
            </div>
 
            <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-              <div className="h-[60%] overflow-hidden border-b border-gray-800">
-                <CodeEditor code={code} onChange={setCode} language={activeProject.language} />
+              <div className="h-[65%] overflow-hidden border-b border-gray-800">
+                <CodeEditor code={code} onChange={setCode} language={activeProject.language} isDarkMode={isDarkMode} />
               </div>
-              <div className="h-[40%] bg-[#151515] flex flex-col">
+              <div className="h-[35%] bg-[#151515] flex flex-col">
                  <div className="bg-[#1e1e1e] border-b border-gray-800 px-4 py-2 flex items-center text-xs text-gray-400 font-mono uppercase tracking-wider">
-                     <Terminal size={14} className="mr-2" /> Terminal Output
+                     <Terminal size={14} className="mr-2" /> Project Sandbox Console
                  </div>
                  <div className="flex-1 p-4 overflow-auto font-mono text-sm">
                     {output ? (
-                      <pre className={`${output.startsWith("Error") ? 'text-red-400' : 'text-gray-300'} whitespace-pre-wrap`}>{output}</pre>
+                      <pre className={`${output.includes("Error") ? 'text-red-400' : 'text-emerald-400'} whitespace-pre-wrap`}>{output}</pre>
                     ) : (
-                      <div className="text-green-400 font-mono">
-                        <span className="text-blue-400">C:\Users\Softvibe\Workspace&gt;</span> softvibe --init workspace.sh<br/>
-                        {"$"} Project workspace ready...
+                      <div className="text-emerald-400 font-mono">
+                        <span className="text-blue-400">C:\Workspace\&gt;</span> judge0 --init environment<br/>
+                        {"$"} Isolated container ready. Write code and click "Run".
                       </div>
                     )}
                  </div>
@@ -578,18 +608,19 @@ export default function App() {
       <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in">
          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
            <div className="flex items-center gap-4">
-             <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white hover:shadow-sm rounded-full transition-all">
-                <ArrowLeft size={24} className="text-slate-600" />
+             <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm rounded-full transition-all">
+                <ArrowLeft size={24} className="text-slate-600 dark:text-slate-400" />
              </button>
              <div>
-               <h1 className="text-3xl font-bold text-slate-900">Practice Lab</h1>
-               <p className="text-slate-500 mt-1">Real-world challenges to test your skills</p>
+               <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Practice Lab</h1>
+               <p className="text-slate-500 dark:text-slate-400 mt-1">Real-world challenges to test your skills</p>
              </div>
            </div>
            
-           <div className="flex gap-3">
+           <div className="flex gap-3 items-center">
+             {renderThemeToggle()}
              <div className="relative">
-               <select className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={langFilter} onChange={(e) => setLangFilter(e.target.value)}>
+               <select className="appearance-none bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={langFilter} onChange={(e) => setLangFilter(e.target.value)}>
                  <option value="All">All Languages</option>
                  <option value="Python">Python</option>
                  <option value="Java">Java</option>
@@ -598,7 +629,7 @@ export default function App() {
                <Filter size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
              </div>
              <div className="relative">
-               <select className="appearance-none bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={difficultyFilter} onChange={(e) => setDifficultyFilter(e.target.value)}>
+               <select className="appearance-none bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm" value={difficultyFilter} onChange={(e) => setDifficultyFilter(e.target.value)}>
                  <option value="All">All Levels</option>
                  <option value="Beginner">Beginner</option>
                  <option value="Intermediate">Intermediate</option>
@@ -611,33 +642,33 @@ export default function App() {
          
          <div className="grid gap-6">
             {filteredProjects.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-                <p className="text-gray-500">No projects found matching your filters.</p>
+              <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-gray-300 dark:border-slate-700">
+                <p className="text-gray-500 dark:text-slate-400">No projects found matching your filters.</p>
               </div>
             ) : (
               filteredProjects.map(project => {
                 const isDone = userProgress.completedProjectIds.includes(project.id);
                 return (
-                 <div key={project.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-lg transition-shadow group">
+                 <div key={project.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-lg transition-shadow group">
                     <div className="flex gap-5 w-full md:w-auto">
-                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0 transition-colors ${project.language === 'Python' ? 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-100' : project.language === 'Java' ? 'bg-orange-50 text-orange-600 group-hover:bg-orange-100' : 'bg-violet-50 text-violet-600 group-hover:bg-violet-100'}`}>
+                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0 transition-colors ${project.language === 'Python' ? 'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/50' : project.language === 'Java' ? 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 group-hover:bg-orange-100 dark:group-hover:bg-orange-900/50' : 'bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 group-hover:bg-violet-100 dark:group-hover:bg-violet-900/50'}`}>
                           {project.language === 'Python' ? '🐍' : project.language === 'Java' ? '☕' : '⚡'}
                        </div>
                        <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                             <h3 className="font-bold text-lg text-slate-900">{project.title}</h3>
-                             {isDone && <CheckCircle size={16} className="text-green-500 fill-green-100" />}
+                             <h3 className="font-bold text-lg text-slate-900 dark:text-slate-50">{project.title}</h3>
+                             {isDone && <CheckCircle size={16} className="text-green-500 fill-green-100 dark:fill-green-900/20" />}
                           </div>
-                          <p className="text-slate-500 text-sm mb-3 line-clamp-2 md:line-clamp-1 max-w-xl">{project.description}</p>
+                          <p className="text-slate-500 dark:text-slate-400 text-sm mb-3 line-clamp-2 md:line-clamp-1 max-w-xl">{project.description}</p>
                           <div className="flex gap-2">
-                            <span className="px-2.5 py-1 bg-gray-50 text-gray-600 text-xs rounded-md font-medium border border-gray-100">{project.language}</span>
-                            <span className={`px-2.5 py-1 text-xs rounded-md font-medium border ${project.difficulty === 'Beginner' ? 'bg-green-50 text-green-700 border-green-100' : project.difficulty === 'Intermediate' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                            <span className="px-2.5 py-1 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-slate-400 text-xs rounded-md font-medium border border-gray-100 dark:border-slate-700">{project.language}</span>
+                            <span className={`px-2.5 py-1 text-xs rounded-md font-medium border ${project.difficulty === 'Beginner' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-100 dark:border-green-900/30' : project.difficulty === 'Intermediate' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-100 dark:border-yellow-900/30' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-100 dark:border-red-900/30'}`}>
                                {project.difficulty}
                             </span>
                           </div>
                        </div>
                     </div>
-                    <button onClick={() => handleStartProject(project)} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition-colors whitespace-nowrap shadow-md shadow-slate-200 flex items-center justify-center gap-2">
+                    <button onClick={() => handleStartProject(project)} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold rounded-xl hover:bg-slate-800 dark:hover:bg-white transition-colors whitespace-nowrap shadow-md shadow-slate-200 dark:shadow-none flex items-center justify-center gap-2">
                        {isDone ? 'Review Code' : 'Start Project'} <ChevronRight size={16} />
                     </button>
                  </div>
@@ -649,7 +680,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300">
       {renderOfflineBanner()}
       {renderApiKeyWarning()}
       {view === 'dashboard' && renderDashboard()}
